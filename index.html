@@ -44,7 +44,7 @@
     position: absolute;
     width: 40px;
     height: 40px;
-    background: url('https://i.imgur.com/fvR9bIu.png') no-repeat center/cover;
+    background: url('https://i.ibb.co/7yg1Pht/pixel-girl-brown-hair.png') no-repeat center/cover;
     left: 50px;
     top: 50px;
   }
@@ -85,10 +85,8 @@ function update() {
   if (keys["arrowleft"] || keys["a"]) x -= speed;
   if (keys["arrowright"] || keys["d"]) x += speed;
 
-  if (x < 0) x = 0;
-  if (y < 0) y = 0;
-  if (x > maxX) x = maxX;
-  if (y > maxY) y = maxY;
+  x = Math.max(0, Math.min(x, maxX));
+  y = Math.max(0, Math.min(y, maxY));
 
   player.style.left = x + "px";
   player.style.top = y + "px";
