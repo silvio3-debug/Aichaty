@@ -1,8 +1,7 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Adventure Game</title>
 <style>
     body {
@@ -10,12 +9,40 @@
         overflow: hidden;
         background: black;
     }
+
+    #startScreen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: black;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10;
+    }
+
+    #startBtn {
+        padding: 15px 30px;
+        font-size: 24px;
+        font-weight: bold;
+        background: white;
+        border: none;
+        cursor: pointer;
+    }
+
     canvas {
         display: block;
+        background: #6abe30; /* Grass green */
     }
 </style>
 </head>
 <body>
+
+<div id="startScreen">
+    <button id="startBtn">Start Game</button>
+</div>
 <canvas id="gameCanvas"></canvas>
 
 <script>
@@ -25,130 +52,87 @@ const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-window.addEventListener("resize", () => {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-});
+const TILE_SIZE = 64;
 
-// Map size = same as screen
-const mapWidth = canvas.width;
-const mapHeight = canvas.height;
+// Simple static map generator (green field with flowers & trees)
+function drawMap() {
+    // Draw grass background
+    ctx.fillStyle = "#6abe30";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-// Player setup
+    // Random flowers
+    for (let i = 0; i < 80; i++) {
+        ctx.fillStyle = ["#ff4f4f", "#ffd93f", "#ffffff"][Math.floor(Math.random()*3)];
+        ctx.beginPath();
+        ctx.arc(Math.random() * canvas.width, Math.random() * canvas.height, 4, 0, Math.PI*2);
+        ctx.fill();
+    }
+
+    // Random trees
+    for (let i = 0; i < 20; i++) {
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height;
+        // Tree trunk
+        ctx.fillStyle = "#8b5a2b";
+        ctx.fillRect(x - 5, y, 10, 25);
+        // Leaves
+        ctx.fillStyle = "#3a5f0b";
+        ctx.beginPath();
+        ctx.arc(x, y, 20, 0, Math.PI*2);
+        ctx.fill();
+    }
+}
+
+// Player settings
 const player = {
-    x: mapWidth / 2,
-    y: mapHeight / 2,
-    width: 32,
-    height: 48,
+    x: canvas.width / 2,
+    y: canvas.height / 2,
     speed: 3,
-    frameX: 0,
-    frameY: 0,
-    moving: false
+    frame: 0,
+    frameTick: 0,
+    sprite: new Image()
 };
 
-// Sprite sheet (simple 8-bit style, green outfit)
-const playerSprite = new Image();
-playerSprite.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAwCAYAAAD0MWnXAAAACXBIWXMAAAsSAAALEgHS3X78AAABiElEQVR4nO2ZTUoDQRBGX0iRhQwQZlwA2wgDkMAsY7MAoCGcNQgkYjN4BsUwEQyDFDYH2MZx2P6HRk5XQkbj7vO/09mGJfFobHTReFTCNQjROA3MJ8t+cwYhGXLQi48PnwHq0GlEldFvOYzChjzNMIxAiOewChh6ozJ7A1CzjNh3jOAKnM4B+RnCMoU04dYVKHypQpQGz3cMylfHRp4DAdAGmUg1y6CpxryByYpBrYxvgkxOkHtReKsxDWxTKNO4D4rOQnVZKVAxPSHsXJrTrHgVNUfctFGHZj9jNW6HbPimVwb/TAZdTaNfLpuBMgP9fi5JqFGXgP8YBclA/YRVSh1itCEpEAZdQlKKwKkUKpFAqRQKkUCpFAqRQKkUCpFAqRQKkUCpFAqRQKkUCpFArxF/MCHehUdNwAAAABJRU5ErkJggg==";
+// Custom 8-bit style green outfit character (Terraria style vibes)
+player.sprite.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgCAYAAABUuP4sAAAAX0lEQVRoge3SQQrAIBAEQf3/n3hDo1QFWJ1vDBXNWb8Q8kldhjKZYxjjDB1nKJrME4z8CCn4xi0I8J9NMQB8YfPtuCsuK7BzHPi7jHj+3b7sw8AABAgQIECBAoH3JvCDGCG2AJ4MgS3M8q4cAAAAASUVORK5CYII=";
+// ↑ placeholder tiny green character — replace with your real sprite sheet when ready
 
-// Keyboard controls
 const keys = {};
-window.addEventListener("keydown", e => {
-    keys[e.key] = true;
-});
-window.addEventListener("keyup", e => {
-    keys[e.key] = false;
-    player.moving = false;
-});
 
-// Flowers and trees
-let decorations = [];
-function generateDecorations() {
-    decorations = [];
-    for (let i = 0; i < 20; i++) {
-        decorations.push({x: Math.random() * mapWidth, y: Math.random() * mapHeight, type: "tree"});
-    }
-    for (let i = 0; i < 30; i++) {
-        decorations.push({x: Math.random() * mapWidth, y: Math.random() * mapHeight, type: "flower"});
-    }
-}
-generateDecorations();
+// Game loop
+function update() {
+    // Movement
+    if (keys["ArrowUp"] || keys["w"]) player.y -= player.speed;
+    if (keys["ArrowDown"] || keys["s"]) player.y += player.speed;
+    if (keys["ArrowLeft"] || keys["a"]) player.x -= player.speed;
+    if (keys["ArrowRight"] || keys["d"]) player.x += player.speed;
 
-function drawDecorations() {
-    decorations.forEach(d => {
-        if (d.type === "tree") {
-            ctx.fillStyle = "darkgreen";
-            ctx.fillRect(d.x, d.y, 40, 60);
-        } else if (d.type === "flower") {
-            ctx.fillStyle = "pink";
-            ctx.beginPath();
-            ctx.arc(d.x, d.y, 4, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    });
+    // Keep inside screen
+    player.x = Math.max(0, Math.min(canvas.width - TILE_SIZE, player.x));
+    player.y = Math.max(0, Math.min(canvas.height - TILE_SIZE, player.y));
 }
 
-function movePlayer() {
-    player.moving = false;
-    if (keys["w"] || keys["ArrowUp"]) {
-        player.y -= player.speed;
-        player.frameY = 3;
-        player.moving = true;
-    }
-    if (keys["s"] || keys["ArrowDown"]) {
-        player.y += player.speed;
-        player.frameY = 0;
-        player.moving = true;
-    }
-    if (keys["a"] || keys["ArrowLeft"]) {
-        player.x -= player.speed;
-        player.frameY = 1;
-        player.moving = true;
-    }
-    if (keys["d"] || keys["ArrowRight"]) {
-        player.x += player.speed;
-        player.frameY = 2;
-        player.moving = true;
-    }
-}
+function draw() {
+    drawMap();
 
-function handlePlayerFrame() {
-    if (player.moving) {
-        player.frameX++;
-        if (player.frameX > 3) player.frameX = 0;
-    } else {
-        player.frameX = 0;
-    }
-}
-
-function drawPlayer() {
-    ctx.drawImage(
-        playerSprite,
-        player.frameX * player.width,
-        player.frameY * player.height,
-        player.width,
-        player.height,
-        player.x,
-        player.y,
-        player.width,
-        player.height
-    );
+    // Draw player
+    ctx.drawImage(player.sprite, player.x, player.y, TILE_SIZE, TILE_SIZE);
 }
 
 function gameLoop() {
-    ctx.fillStyle = "#4CAF50"; // grass background
-    ctx.fillRect(0, 0, mapWidth, mapHeight);
-
-    drawDecorations();
-    movePlayer();
-    handlePlayerFrame();
-    drawPlayer();
-
+    update();
+    draw();
     requestAnimationFrame(gameLoop);
 }
 
-playerSprite.onload = () => {
+window.addEventListener("keydown", e => keys[e.key] = true);
+window.addEventListener("keyup", e => keys[e.key] = false);
+
+document.getElementById("startBtn").addEventListener("click", () => {
+    document.getElementById("startScreen").style.display = "none";
     gameLoop();
-};
+});
 </script>
+
 </body>
 </html>
