@@ -1,138 +1,125 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Adventure Game</title>
-<style>
+  <meta charset="UTF-8">
+  <title>Adventure Game</title>
+  <style>
     body {
-        margin: 0;
-        overflow: hidden;
-        background: black;
+      margin: 0;
+      background: black;
+      overflow: hidden;
     }
-
+    #gameCanvas {
+      display: none;
+      background: url('https://i.ibb.co/gWZbJH2/green-field.png') no-repeat center center;
+      background-size: cover;
+    }
     #startScreen {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: black;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 10;
+      width: 100%;
+      height: 100vh;
+      background: black;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
-
-    #startBtn {
-        padding: 15px 30px;
-        font-size: 24px;
-        font-weight: bold;
-        background: white;
-        border: none;
-        cursor: pointer;
+    #startButton {
+      padding: 20px 40px;
+      font-size: 2rem;
+      background: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 8px;
     }
-
-    canvas {
-        display: block;
-        background: #6abe30; /* Grass green */
-    }
-</style>
+  </style>
 </head>
 <body>
+  <div id="startScreen">
+    <button id="startButton">Start Game</button>
+  </div>
+  <canvas id="gameCanvas"></canvas>
 
-<div id="startScreen">
-    <button id="startBtn">Start Game</button>
-</div>
-<canvas id="gameCanvas"></canvas>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-<script>
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+    let keys = {};
+    let frameIndex = 0;
+    let frameCount = 0;
+    let playerX = canvas.width / 2;
+    let playerY = canvas.height / 2;
+    const speed = 3;
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+    // 4-frame walking sprite sheet (Terraria style)
+    const playerSprite = new Image();
+    playerSprite.src = "https://i.ibb.co/N1nVJG8/adventure-girl-4frames.png"; // Custom sheet
 
-const TILE_SIZE = 64;
+    const frameWidth = 32;
+    const frameHeight = 48;
+    const scale = 3;
+    const scaledWidth = frameWidth * scale;
+    const scaledHeight = frameHeight * scale;
 
-// Simple static map generator (green field with flowers & trees)
-function drawMap() {
-    // Draw grass background
-    ctx.fillStyle = "#6abe30";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    document.addEventListener("keydown", (e) => {
+      keys[e.key] = true;
+    });
+    document.addEventListener("keyup", (e) => {
+      keys[e.key] = false;
+    });
 
-    // Random flowers
-    for (let i = 0; i < 80; i++) {
-        ctx.fillStyle = ["#ff4f4f", "#ffd93f", "#ffffff"][Math.floor(Math.random()*3)];
-        ctx.beginPath();
-        ctx.arc(Math.random() * canvas.width, Math.random() * canvas.height, 4, 0, Math.PI*2);
-        ctx.fill();
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw background map (static full screen)
+      ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+
+      let moving = false;
+
+      if (keys["ArrowUp"] || keys["w"]) {
+        playerY -= speed;
+        moving = true;
+      }
+      if (keys["ArrowDown"] || keys["s"]) {
+        playerY += speed;
+        moving = true;
+      }
+      if (keys["ArrowLeft"] || keys["a"]) {
+        playerX -= speed;
+        moving = true;
+      }
+      if (keys["ArrowRight"] || keys["d"]) {
+        playerX += speed;
+        moving = true;
+      }
+
+      if (moving) {
+        frameCount++;
+        if (frameCount >= 8) { // change frame every 8 ticks
+          frameIndex = (frameIndex + 1) % 4; // loop through 4 frames
+          frameCount = 0;
+        }
+      } else {
+        frameIndex = 0; // idle frame
+      }
+
+      ctx.drawImage(
+        playerSprite,
+        frameIndex * frameWidth, 0, frameWidth, frameHeight,
+        playerX, playerY, scaledWidth, scaledHeight
+      );
+
+      requestAnimationFrame(gameLoop);
     }
 
-    // Random trees
-    for (let i = 0; i < 20; i++) {
-        const x = Math.random() * canvas.width;
-        const y = Math.random() * canvas.height;
-        // Tree trunk
-        ctx.fillStyle = "#8b5a2b";
-        ctx.fillRect(x - 5, y, 10, 25);
-        // Leaves
-        ctx.fillStyle = "#3a5f0b";
-        ctx.beginPath();
-        ctx.arc(x, y, 20, 0, Math.PI*2);
-        ctx.fill();
-    }
-}
+    const backgroundImage = new Image();
+    backgroundImage.src = "https://i.ibb.co/gWZbJH2/green-field.png"; // Static green field map
 
-// Player settings
-const player = {
-    x: canvas.width / 2,
-    y: canvas.height / 2,
-    speed: 3,
-    frame: 0,
-    frameTick: 0,
-    sprite: new Image()
-};
-
-// Custom 8-bit style green outfit character (Terraria style vibes)
-player.sprite.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgCAYAAABUuP4sAAAAX0lEQVRoge3SQQrAIBAEQf3/n3hDo1QFWJ1vDBXNWb8Q8kldhjKZYxjjDB1nKJrME4z8CCn4xi0I8J9NMQB8YfPtuCsuK7BzHPi7jHj+3b7sw8AABAgQIECBAoH3JvCDGCG2AJ4MgS3M8q4cAAAAASUVORK5CYII=";
-// ↑ placeholder tiny green character — replace with your real sprite sheet when ready
-
-const keys = {};
-
-// Game loop
-function update() {
-    // Movement
-    if (keys["ArrowUp"] || keys["w"]) player.y -= player.speed;
-    if (keys["ArrowDown"] || keys["s"]) player.y += player.speed;
-    if (keys["ArrowLeft"] || keys["a"]) player.x -= player.speed;
-    if (keys["ArrowRight"] || keys["d"]) player.x += player.speed;
-
-    // Keep inside screen
-    player.x = Math.max(0, Math.min(canvas.width - TILE_SIZE, player.x));
-    player.y = Math.max(0, Math.min(canvas.height - TILE_SIZE, player.y));
-}
-
-function draw() {
-    drawMap();
-
-    // Draw player
-    ctx.drawImage(player.sprite, player.x, player.y, TILE_SIZE, TILE_SIZE);
-}
-
-function gameLoop() {
-    update();
-    draw();
-    requestAnimationFrame(gameLoop);
-}
-
-window.addEventListener("keydown", e => keys[e.key] = true);
-window.addEventListener("keyup", e => keys[e.key] = false);
-
-document.getElementById("startBtn").addEventListener("click", () => {
-    document.getElementById("startScreen").style.display = "none";
-    gameLoop();
-});
-</script>
-
+    document.getElementById("startButton").addEventListener("click", () => {
+      document.getElementById("startScreen").style.display = "none";
+      canvas.style.display = "block";
+      gameLoop();
+    });
+  </script>
 </body>
 </html>
