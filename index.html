@@ -1,139 +1,154 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Adventure Game</title>
 <style>
-  body { margin: 0; background: black; overflow: hidden; }
-  canvas { display: block; margin: auto; background: black; }
-  #startScreen {
-    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-    background: black; display: flex; align-items: center; justify-content: center; flex-direction: column;
-    z-index: 2;
-  }
-  #startBtn {
-    padding: 15px 30px; font-size: 20px; cursor: pointer;
-    background: white; border: none; border-radius: 5px;
-  }
+    body {
+        margin: 0;
+        overflow: hidden;
+        background: black;
+    }
+    canvas {
+        display: block;
+    }
 </style>
 </head>
 <body>
-
-<div id="startScreen">
-  <button id="startBtn">Start Game</button>
-</div>
-
-<canvas id="gameCanvas" width="640" height="480"></canvas>
+<canvas id="gameCanvas"></canvas>
 
 <script>
-// ==== SETTINGS ====
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
-const TILE_SIZE = 32;
-const MAP_WIDTH = 20;
-const MAP_HEIGHT = 15;
 
-// ==== TILES ====
-const grassTile = "#3cb043";
-const flowerTile = "#3cb043";
-const treeTile = "#2d572c";
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-// ==== MAP GEN ====
-let map = [];
-for (let y=0; y<MAP_HEIGHT; y++) {
-  let row = [];
-  for (let x=0; x<MAP_WIDTH; x++) {
-    let r = Math.random();
-    if (r < 0.05) row.push("tree");
-    else if (r < 0.10) row.push("flower");
-    else row.push("grass");
-  }
-  map.push(row);
-}
+window.addEventListener("resize", () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
 
-// ==== PLAYER SPRITE (Base64 embedded) ====
-const playerImage = new Image();
-playerImage.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgCAYAAABU8VtVAAAACXBIWXMAAA7EAAAOxAGVKw4bAAABrElEQVR4nO2ZQY6CMBBF5x+lhMnBzNo1tL9U1iVdo9E6+3TeF8R+CyYkHByS9dNyoqpH8oxM14a2npfBI4AgghhBBCCCFEniJ2mQ12B3q6uqEalV6I6zB5lM1TwZqh3QYzvA5cHoQ1mP6yGQEtw6BA9LkZpPpiDqkAh28wKz9x2hRpu9aj1HkqzAq2J9EbF6BtHfUgPiwzIAvQmKfQqxdKfVJ6PUb00XqDk+SDQH9jLrt20RgNIV9zMKkjO7osbM4Dfo1nn7m8N8mYdTf2ctjJoUWy2ZbZu8F+EpGCD8DUTWmF1AIDK2qN28jGFQBt1Y9ahWyHe1C6kBxANvC9LOoV0rgBWkkpSAeAbCN+B1wBu7N2B/IEko5X1kXgI6DPzYzP+M+BBQ0jxH1Bu1GcO3BgrLMuIMJX4AwcV1e2L6wkL5+6i1D7GXgFWvmSMTwiC7zRXgJwPq5qkMXxg1wAAAABJRU5ErkJggg==";
+// Map size = same as screen
+const mapWidth = canvas.width;
+const mapHeight = canvas.height;
 
-// Sprite info
-let player = {
-  x: 5 * TILE_SIZE,
-  y: 5 * TILE_SIZE,
-  frame: 0,
-  dir: "down",
-  moving: false,
-  speed: 2
+// Player setup
+const player = {
+    x: mapWidth / 2,
+    y: mapHeight / 2,
+    width: 32,
+    height: 48,
+    speed: 3,
+    frameX: 0,
+    frameY: 0,
+    moving: false
 };
 
+// Sprite sheet (simple 8-bit style, green outfit)
+const playerSprite = new Image();
+playerSprite.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAwCAYAAAD0MWnXAAAACXBIWXMAAAsSAAALEgHS3X78AAABiElEQVR4nO2ZTUoDQRBGX0iRhQwQZlwA2wgDkMAsY7MAoCGcNQgkYjN4BsUwEQyDFDYH2MZx2P6HRk5XQkbj7vO/09mGJfFobHTReFTCNQjROA3MJ8t+cwYhGXLQi48PnwHq0GlEldFvOYzChjzNMIxAiOewChh6ozJ7A1CzjNh3jOAKnM4B+RnCMoU04dYVKHypQpQGz3cMylfHRp4DAdAGmUg1y6CpxryByYpBrYxvgkxOkHtReKsxDWxTKNO4D4rOQnVZKVAxPSHsXJrTrHgVNUfctFGHZj9jNW6HbPimVwb/TAZdTaNfLpuBMgP9fi5JqFGXgP8YBclA/YRVSh1itCEpEAZdQlKKwKkUKpFAqRQKkUCpFAqRQKkUCpFAqRQKkUCpFAqRQKkUCpFArxF/MCHehUdNwAAAABJRU5ErkJggg==";
+
+// Keyboard controls
 const keys = {};
-
-// ==== DRAW MAP ====
-function drawMap() {
-  for (let y=0; y<MAP_HEIGHT; y++) {
-    for (let x=0; x<MAP_WIDTH; x++) {
-      if (map[y][x] === "grass") {
-        ctx.fillStyle = grassTile;
-        ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
-      }
-      if (map[y][x] === "flower") {
-        ctx.fillStyle = grassTile;
-        ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
-        ctx.fillStyle = "pink";
-        ctx.beginPath();
-        ctx.arc(x*TILE_SIZE+16, y*TILE_SIZE+16, 4, 0, Math.PI*2);
-        ctx.fill();
-      }
-      if (map[y][x] === "tree") {
-        ctx.fillStyle = treeTile;
-        ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
-        ctx.fillStyle = "green";
-        ctx.beginPath();
-        ctx.arc(x*TILE_SIZE+16, y*TILE_SIZE+16, 14, 0, Math.PI*2);
-        ctx.fill();
-      }
-    }
-  }
-}
-
-// ==== DRAW PLAYER ====
-function drawPlayer() {
-  ctx.drawImage(playerImage, player.frame*32, 0, 32, 32, player.x, player.y, 32, 32);
-}
-
-// ==== UPDATE ====
-function update() {
-  player.moving = false;
-  if (keys["ArrowUp"]) { player.y -= player.speed; player.moving = true; player.dir="up"; }
-  if (keys["ArrowDown"]) { player.y += player.speed; player.moving = true; player.dir="down"; }
-  if (keys["ArrowLeft"]) { player.x -= player.speed; player.moving = true; player.dir="left"; }
-  if (keys["ArrowRight"]) { player.x += player.speed; player.moving = true; player.dir="right"; }
-
-  if (player.moving) {
-    player.frame = (player.frame + 0.1) % 4; // animation
-  } else {
-    player.frame = 0; // idle
-  }
-}
-
-// ==== GAME LOOP ====
-function gameLoop() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawMap();
-  drawPlayer();
-  update();
-  requestAnimationFrame(gameLoop);
-}
-
-// ==== INPUT ====
-document.addEventListener("keydown", e => { keys[e.key] = true; });
-document.addEventListener("keyup", e => { keys[e.key] = false; });
-
-// ==== START GAME ====
-document.getElementById("startBtn").addEventListener("click", () => {
-  document.getElementById("startScreen").style.display = "none";
-  gameLoop();
+window.addEventListener("keydown", e => {
+    keys[e.key] = true;
 });
-</script>
+window.addEventListener("keyup", e => {
+    keys[e.key] = false;
+    player.moving = false;
+});
 
+// Flowers and trees
+let decorations = [];
+function generateDecorations() {
+    decorations = [];
+    for (let i = 0; i < 20; i++) {
+        decorations.push({x: Math.random() * mapWidth, y: Math.random() * mapHeight, type: "tree"});
+    }
+    for (let i = 0; i < 30; i++) {
+        decorations.push({x: Math.random() * mapWidth, y: Math.random() * mapHeight, type: "flower"});
+    }
+}
+generateDecorations();
+
+function drawDecorations() {
+    decorations.forEach(d => {
+        if (d.type === "tree") {
+            ctx.fillStyle = "darkgreen";
+            ctx.fillRect(d.x, d.y, 40, 60);
+        } else if (d.type === "flower") {
+            ctx.fillStyle = "pink";
+            ctx.beginPath();
+            ctx.arc(d.x, d.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+}
+
+function movePlayer() {
+    player.moving = false;
+    if (keys["w"] || keys["ArrowUp"]) {
+        player.y -= player.speed;
+        player.frameY = 3;
+        player.moving = true;
+    }
+    if (keys["s"] || keys["ArrowDown"]) {
+        player.y += player.speed;
+        player.frameY = 0;
+        player.moving = true;
+    }
+    if (keys["a"] || keys["ArrowLeft"]) {
+        player.x -= player.speed;
+        player.frameY = 1;
+        player.moving = true;
+    }
+    if (keys["d"] || keys["ArrowRight"]) {
+        player.x += player.speed;
+        player.frameY = 2;
+        player.moving = true;
+    }
+}
+
+function handlePlayerFrame() {
+    if (player.moving) {
+        player.frameX++;
+        if (player.frameX > 3) player.frameX = 0;
+    } else {
+        player.frameX = 0;
+    }
+}
+
+function drawPlayer() {
+    ctx.drawImage(
+        playerSprite,
+        player.frameX * player.width,
+        player.frameY * player.height,
+        player.width,
+        player.height,
+        player.x,
+        player.y,
+        player.width,
+        player.height
+    );
+}
+
+function gameLoop() {
+    ctx.fillStyle = "#4CAF50"; // grass background
+    ctx.fillRect(0, 0, mapWidth, mapHeight);
+
+    drawDecorations();
+    movePlayer();
+    handlePlayerFrame();
+    drawPlayer();
+
+    requestAnimationFrame(gameLoop);
+}
+
+playerSprite.onload = () => {
+    gameLoop();
+};
+</script>
 </body>
 </html>
