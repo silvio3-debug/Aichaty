@@ -44,7 +44,7 @@
     position: absolute;
     width: 40px;
     height: 40px;
-    background: url('https://i.imgur.com/fvR9bIu.png') no-repeat center/cover; /* pixel humanoid placeholder */
+    background: url('https://i.imgur.com/fvR9bIu.png') no-repeat center/cover;
     left: 50px;
     top: 50px;
   }
@@ -61,27 +61,30 @@
 </div>
 
 <script>
-let player, x = 50, y = 50, speed = 5;
+let player, x = 50, y = 50, speed = 3;
+let keys = {};
 
 function startGame() {
   document.getElementById("intro").style.display = "none";
   document.getElementById("gameScreen").style.display = "block";
   player = document.getElementById("player");
 
-  document.addEventListener("keydown", movePlayer);
+  document.addEventListener("keydown", (e) => keys[e.key.toLowerCase()] = true);
+  document.addEventListener("keyup", (e) => keys[e.key.toLowerCase()] = false);
+
+  requestAnimationFrame(update);
 }
 
-function movePlayer(e) {
+function update() {
   const screen = document.getElementById("gameScreen");
   const maxX = screen.clientWidth - player.clientWidth;
   const maxY = screen.clientHeight - player.clientHeight;
 
-  if (e.key === "ArrowUp" || e.key.toLowerCase() === "w") y -= speed;
-  if (e.key === "ArrowDown" || e.key.toLowerCase() === "s") y += speed;
-  if (e.key === "ArrowLeft" || e.key.toLowerCase() === "a") x -= speed;
-  if (e.key === "ArrowRight" || e.key.toLowerCase() === "d") x += speed;
+  if (keys["arrowup"] || keys["w"]) y -= speed;
+  if (keys["arrowdown"] || keys["s"]) y += speed;
+  if (keys["arrowleft"] || keys["a"]) x -= speed;
+  if (keys["arrowright"] || keys["d"]) x += speed;
 
-  // Keep inside bounds
   if (x < 0) x = 0;
   if (y < 0) y = 0;
   if (x > maxX) x = maxX;
@@ -89,6 +92,8 @@ function movePlayer(e) {
 
   player.style.left = x + "px";
   player.style.top = y + "px";
+
+  requestAnimationFrame(update);
 }
 </script>
 
