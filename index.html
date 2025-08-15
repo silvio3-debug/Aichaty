@@ -2,98 +2,171 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>My GitHub Game</title>
+<title>Terraria Style Adventure</title>
 <style>
   body {
     margin: 0;
-    font-family: Arial, sans-serif;
-    height: 100vh;
-    background: black;
-    color: white;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    background-color: #87ceeb;
     overflow: hidden;
   }
-  #intro {
-    text-align: center;
-  }
-  button {
-    background: white;
-    color: black;
-    font-size: 1.5rem;
-    padding: 12px 24px;
-    border: none;
-    cursor: pointer;
-    border-radius: 8px;
-    transition: 0.3s;
-  }
-  button:hover {
-    background: #ddd;
-  }
-  #gameScreen {
-    display: none;
-    width: 100%;
-    height: 100%;
-    background: #222;
-    position: relative;
-    overflow: hidden;
-  }
-  /* Character */
-  #player {
-    position: absolute;
-    width: 40px;
-    height: 40px;
-    background: url('https://i.ibb.co/7yg1Pht/pixel-girl-brown-hair.png') no-repeat center/cover;
-    left: 50px;
-    top: 50px;
+  canvas {
+    image-rendering: pixelated;
+    display: block;
+    margin: 0 auto;
+    background-color: #5cb85c;
   }
 </style>
 </head>
 <body>
-
-<div id="intro">
-  <button onclick="startGame()">Start Game</button>
-</div>
-
-<div id="gameScreen">
-  <div id="player"></div>
-</div>
-
+<canvas id="gameCanvas" width="800" height="600"></canvas>
 <script>
-let player, x = 50, y = 50, speed = 3;
-let keys = {};
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
-function startGame() {
-  document.getElementById("intro").style.display = "none";
-  document.getElementById("gameScreen").style.display = "block";
-  player = document.getElementById("player");
+const scale = 4; // makes sprite bigger but still pixel-perfect
 
-  document.addEventListener("keydown", (e) => keys[e.key.toLowerCase()] = true);
-  document.addEventListener("keyup", (e) => keys[e.key.toLowerCase()] = false);
+// Create sprite sheet dynamically
+const spriteCanvas = document.createElement("canvas");
+spriteCanvas.width = 16 * 3; // 3 frames: idle, walk1, walk2
+spriteCanvas.height = 32;
+const sctx = spriteCanvas.getContext("2d");
 
-  requestAnimationFrame(update);
+// Draw idle frame
+function drawCharacterFrame(ctx, frame) {
+  ctx.clearRect(0, 0, 16, 32);
+  // Skin
+  ctx.fillStyle = "#deb887";
+  ctx.fillRect(6, 0, 4, 8); // head
+  ctx.fillRect(6, 8, 4, 12); // body skin (hands)
+  // Hair (brown)
+  ctx.fillStyle = "#8b4513";
+  ctx.fillRect(4, 0, 8, 4); // top hair
+  ctx.fillRect(5, 4, 6, 4); // sides
+  ctx.fillRect(6, 2, 4, 6); // bangs
+  // Outfit (green shirt)
+  ctx.fillStyle = "#228B22";
+  ctx.fillRect(4, 8, 8, 8); // torso
+  // Legs (pants - dark green)
+  ctx.fillStyle = "#006400";
+  ctx.fillRect(4, 16, 4, 8);
+  ctx.fillRect(8, 16, 4, 8);
+  // Boots (brown)
+  ctx.fillStyle = "#654321";
+  ctx.fillRect(4, 24, 4, 4);
+  ctx.fillRect(8, 24, 4, 4);
 }
+
+// Draw walking frames (slightly different leg positions)
+function drawWalkingFrame(ctx, step) {
+  ctx.clearRect(0, 0, 16, 32);
+  // Skin
+  ctx.fillStyle = "#deb887";
+  ctx.fillRect(6, 0, 4, 8);
+  ctx.fillRect(6, 8, 4, 12);
+  // Hair
+  ctx.fillStyle = "#8b4513";
+  ctx.fillRect(4, 0, 8, 4);
+  ctx.fillRect(5, 4, 6, 4);
+  ctx.fillRect(6, 2, 4, 6);
+  // Outfit
+  ctx.fillStyle = "#228B22";
+  ctx.fillRect(4, 8, 8, 8);
+  // Legs
+  ctx.fillStyle = "#006400";
+  if (step === 1) {
+    ctx.fillRect(3, 16, 4, 8); // left forward
+    ctx.fillRect(9, 16, 4, 8); // right back
+  } else {
+    ctx.fillRect(5, 16, 4, 8); // left back
+    ctx.fillRect(7, 16, 4, 8); // right forward
+  }
+  // Boots
+  ctx.fillStyle = "#654321";
+  if (step === 1) {
+    ctx.fillRect(3, 24, 4, 4);
+    ctx.fillRect(9, 24, 4, 4);
+  } else {
+    ctx.fillRect(5, 24, 4, 4);
+    ctx.fillRect(7, 24, 4, 4);
+  }
+}
+
+// Generate sprite sheet
+drawCharacterFrame(sctx, 0);
+const idleImg = sctx.getImageData(0, 0, 16, 32);
+sctx.putImageData(idleImg, 0, 0);
+
+drawWalkingFrame(sctx, 1);
+const walk1 = sctx.getImageData(0, 0, 16, 32);
+sctx.putImageData(walk1, 16, 0);
+
+drawWalkingFrame(sctx, 2);
+const walk2 = sctx.getImageData(0, 0, 16, 32);
+sctx.putImageData(walk2, 32, 0);
+
+// Game state
+let playerX = 400;
+let playerY = 300;
+let velX = 0;
+let velY = 0;
+let speed = 2;
+let keys = {};
+let frameIndex = 0;
+let frameTimer = 0;
+
+// Input
+window.addEventListener("keydown", e => keys[e.key] = true);
+window.addEventListener("keyup", e => keys[e.key] = false);
 
 function update() {
-  const screen = document.getElementById("gameScreen");
-  const maxX = screen.clientWidth - player.clientWidth;
-  const maxY = screen.clientHeight - player.clientHeight;
+  velX = 0;
+  velY = 0;
+  if (keys["ArrowUp"] || keys["w"]) velY = -speed;
+  if (keys["ArrowDown"] || keys["s"]) velY = speed;
+  if (keys["ArrowLeft"] || keys["a"]) velX = -speed;
+  if (keys["ArrowRight"] || keys["d"]) velX = speed;
 
-  if (keys["arrowup"] || keys["w"]) y -= speed;
-  if (keys["arrowdown"] || keys["s"]) y += speed;
-  if (keys["arrowleft"] || keys["a"]) x -= speed;
-  if (keys["arrowright"] || keys["d"]) x += speed;
+  playerX += velX;
+  playerY += velY;
 
-  x = Math.max(0, Math.min(x, maxX));
-  y = Math.max(0, Math.min(y, maxY));
-
-  player.style.left = x + "px";
-  player.style.top = y + "px";
-
-  requestAnimationFrame(update);
+  // Animation timing
+  if (velX !== 0 || velY !== 0) {
+    frameTimer++;
+    if (frameTimer >= 10) {
+      frameIndex = (frameIndex + 1) % 2;
+      frameTimer = 0;
+    }
+  } else {
+    frameIndex = -1; // idle
+  }
 }
-</script>
 
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  let spriteX;
+  if (frameIndex === -1) {
+    spriteX = 0; // idle
+  } else if (frameIndex === 0) {
+    spriteX = 16; // walk1
+  } else {
+    spriteX = 32; // walk2
+  }
+
+  ctx.drawImage(
+    spriteCanvas,
+    spriteX, 0, 16, 32,
+    Math.floor(playerX), Math.floor(playerY), 16 * scale, 32 * scale
+  );
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
 </body>
 </html>
