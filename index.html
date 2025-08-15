@@ -18,9 +18,8 @@
     height: 100vh;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
-    background: #000; /* will be covered by map render */
+    background: #000;
   }
-  /* Start overlay */
   #startOverlay {
     position: fixed;
     inset: 0;
@@ -69,9 +68,7 @@ let W = 0, H = 0;
 function resize() {
   W = canvas.width  = Math.floor(window.innerWidth);
   H = canvas.height = Math.floor(window.innerHeight);
-  // Keep pixels crisp when scaling
   ctx.imageSmoothingEnabled = false;
-  // Rebuild map buffer to match new size
   buildStaticMap();
 }
 window.addEventListener("resize", resize);
@@ -100,7 +97,7 @@ function randi(min, max) { return Math.floor(rand(min, max)); }
    Map (static, full screen)
    ========================= */
 let mapBuffer, mapCtx;
-let solidRects = []; // collision solids (tree trunks)
+let solidRects = [];
 
 function buildStaticMap() {
   mapBuffer = document.createElement("canvas");
@@ -109,11 +106,9 @@ function buildStaticMap() {
   mapCtx = mapBuffer.getContext("2d");
   mapCtx.imageSmoothingEnabled = false;
 
-  // Base grass
-  mapCtx.fillStyle = "#6ac36a"; // main grass
+  mapCtx.fillStyle = "#6ac36a";
   mapCtx.fillRect(0,0,W,H);
 
-  // Subtle grass noise tiles (tiny squares)
   const cell = 8;
   for (let y = 0; y < H; y += cell) {
     for (let x = 0; x < W; x += cell) {
@@ -128,24 +123,21 @@ function buildStaticMap() {
     }
   }
 
-  // Sprinkle flowers
   const flowerCount = Math.floor((W*H) / 12000);
   for (let i = 0; i < flowerCount; i++) {
     const x = randi(8, W-8);
     const y = randi(8, H-8);
     const type = randi(0,3);
-    if (type === 0) mapCtx.fillStyle = "#ffe6f2"; // pink
-    if (type === 1) mapCtx.fillStyle = "#fff8a6"; // pale yellow
-    if (type === 2) mapCtx.fillStyle = "#b0e3ff"; // sky
+    if (type === 0) mapCtx.fillStyle = "#ffe6f2";
+    if (type === 1) mapCtx.fillStyle = "#fff8a6";
+    if (type === 2) mapCtx.fillStyle = "#b0e3ff";
     mapCtx.fillRect(x, y, 3, 3);
     mapCtx.fillRect(x+2, y+1, 2, 2);
     mapCtx.fillRect(x-1, y+1, 2, 2);
-    // stem
     mapCtx.fillStyle = "#2f7b2f";
     mapCtx.fillRect(x+1, y+3, 1, 3);
   }
 
-  // Trees (draw foliage + trunk; trunk is solid)
   solidRects = [];
   const treeCount = Math.floor((W*H) / 50000);
   for (let i = 0; i < treeCount; i++) {
@@ -156,20 +148,17 @@ function buildStaticMap() {
 }
 
 function drawTree(g, x, y) {
-  // Foliage: layered circles
   g.fillStyle = "#2e8b57";
   for (let r = 26; r >= 18; r -= 4) {
     g.beginPath();
     g.arc(x, y, r, 0, Math.PI*2);
     g.fill();
   }
-  // Highlights
   g.fillStyle = "#3da86e";
   g.beginPath();
   g.arc(x-8, y-8, 10, 0, Math.PI*2);
   g.fill();
 
-  // Trunk (solid rect)
   const trunkW = 14, trunkH = 26;
   const tx = x - trunkW/2, ty = y + 10;
   g.fillStyle = "#8b5a2b";
@@ -182,12 +171,9 @@ function drawTree(g, x, y) {
 
 /* =========================
    Character sprite builder
-   Terraria-style 8-bit, 16x24 px base, scaled x4
-   Directions: 0=down,1=left,2=right,3=up
-   Frames: idle(0), walk1(1), walk2(2), walk3(3), walk4(4)
    ========================= */
 const BASE_W = 16, BASE_H = 24;
-const SCALE = 4; // 16x24 -> 64x96 on screen
+const SCALE = 4;
 const DRAW_W = BASE_W * SCALE;
 const DRAW_H = BASE_H * SCALE;
 
@@ -196,50 +182,38 @@ function makeFrame(drawFn) {
   c.width = BASE_W; c.height = BASE_H;
   const g = c.getContext("2d");
   g.imageSmoothingEnabled = false;
-  // Transparent background by default
   drawFn(g);
   return c;
 }
 
-// Utility to draw a 1-pixel rect
 function p(g, x, y, color) {
   g.fillStyle = color;
   g.fillRect(x, y, 1, 1);
 }
 
-// Build all frames
-// Palette
 const skin = "#f0c8a8";
 const hair = "#5a3a21";
 const hairHL = "#6b482b";
 const eyes = "#2a2a2a";
-const outfitMain = "#1f8a3c";  // green outfit
+const outfitMain = "#1f8a3c";
 const outfitShadow = "#166a2e";
 const boots = "#4b3928";
 const belt = "#2e2e2e";
 
-// Core body painter for a simple 8-bit humanoid in a direction
-// We'll sketch a small terraria-like chibi: head 10x10 area, body 10x8, legs 10x6
-// Each direction gets slightly different hair/face/clothes placement.
-// walkPhase: 0..3 for walking; idle: unique posture per direction.
 function drawCharacter(g, dir, frameIndex) {
-  // Clear
   g.clearRect(0,0,BASE_W,BASE_H);
 
-  // Helper offsets for walking animation
-  // Simple arm/leg swings: sinus table
   const walkFrames = [
     {legL: -2, legR: 2, armL: 2, armR: -2},
     {legL: 0,  legR: 0, armL: 0, armR: 0},
     {legL: 2,  legR: -2, armL: -2, armR: 2},
     {legL: 0,  legR: 0, armL: 0, armR: 0},
   ];
-  // Idle pose offsets (small breathing + head tilt per direction)
   const idlePose = [
-    {headY:0, bodyY:0, arm:0},  // down
-    {headY:-1, bodyY:0, arm:-1},// left
-    {headY:-1, bodyY:0, arm:1}, // right
-    {headY:0, bodyY:-1, arm:0}, // up
+    {headY:0, bodyY:0, arm:0},
+    {headY:-1, bodyY:0, arm:-1},
+    {headY:-1, bodyY:0, arm:1},
+    {headY:0, bodyY:-1, arm:0},
   ];
 
   const isIdle = (frameIndex === 0);
@@ -249,20 +223,16 @@ function drawCharacter(g, dir, frameIndex) {
     const ip = idlePose[dir];
     headY = ip.headY; bodyY = ip.bodyY;
     armSwingL = ip.arm; armSwingR = -ip.arm;
-    legSwingL = 0; legSwingR = 0;
   } else {
     const w = walkFrames[(frameIndex-1) % 4];
     armSwingL = w.armL; armSwingR = w.armR;
     legSwingL = w.legL; legSwingR = w.legR;
   }
 
-  // Draw order: hair (behind), head, body, arms, legs, boots, details
-  // Base anchors
-  const headX = 3, headTop = 2 + headY; // 10x10 head box from (3,2)
+  const headX = 3, headTop = 2 + headY;
   const bodyTop = 12 + bodyY;
   const bodyX = 3;
 
-  // Hair silhouette by direction (simple rounded cap)
   function drawHairBack() {
     const col = hair;
     for (let x=2; x<=13; x++) p(g,x,headTop, col);
@@ -270,79 +240,67 @@ function drawCharacter(g, dir, frameIndex) {
     for (let x=1; x<=14; x++) p(g,x,headTop+2, col);
     for (let x=1; x<=14; x++) p(g,x,headTop+3, col);
     for (let x=2; x<=13; x++) p(g,x,headTop+4, col);
-    // small back hair strands
     p(g,2, headTop+5, col); p(g,13, headTop+5, col);
   }
 
-  // Head (skin) with slight direction differences
   function drawHeadFront() {
-    // face oval-ish 8x8 inside hair
     for (let y=0; y<8; y++) {
       for (let x=0; x<8; x++) {
         p(g, headX+x, headTop+1+y, skin);
       }
     }
-    // jaw line
     for (let x=headX+1; x<=headX+6; x++) p(g, x, headTop+9, skin);
 
-    // bangs/hair front depending on dir
-    if (dir === 0) { // down
+    if (dir === 0) {
       p(g, headX, headTop+1, hairHL);
       p(g, headX+7, headTop+1, hairHL);
       p(g, headX+2, headTop+1, hair);
       p(g, headX+5, headTop+1, hair);
-    } else if (dir === 1) { // left
+    } else if (dir === 1) {
       for (let y=0; y<6; y++) p(g, headX, headTop+2+y, hairHL);
       p(g, headX+1, headTop+2, hairHL);
-    } else if (dir === 2) { // right
+    } else if (dir === 2) {
       for (let y=0; y<6; y++) p(g, headX+7, headTop+2+y, hairHL);
       p(g, headX+6, headTop+2, hairHL);
-    } else { // up
-      // a bit more hair across top
+    } else {
       for (let x=headX; x<headX+8; x++) p(g, x, headTop+1, hair);
     }
   }
 
   function drawFace() {
     if (dir === 3) {
-      // looking up: eyes higher, no mouth visible
       p(g, headX+2, headTop+3, eyes);
       p(g, headX+5, headTop+3, eyes);
     } else {
-      // neutral/down/left/right
       p(g, headX+2, headTop+4, eyes);
       p(g, headX+5, headTop+4, eyes);
-      // tiny mouth (except up)
       p(g, headX+3, headTop+6, "#aa6a6a");
     }
+    // round glasses for all directions
+    const glassColor = "#444";
+    p(g, headX+1, headTop+4, glassColor);
+    p(g, headX+6, headTop+4, glassColor);
+    p(g, headX+1, headTop+5, glassColor);
+    p(g, headX+6, headTop+5, glassColor);
   }
 
   function drawTorso() {
-    // main torso block
     for (let y=0; y<6; y++) {
       for (let x=0; x<8; x++) {
         const col = (y >= 2) ? outfitShadow : outfitMain;
         p(g, bodyX+x, bodyTop+y, col);
       }
     }
-    // belt line
     for (let x=bodyX; x<bodyX+8; x++) p(g, x, bodyTop+6, belt);
   }
 
   function drawArms() {
-    // arms are skinny 1-px wide + sleeve (hands free)
     const leftX  = bodyX-1, rightX = bodyX+8;
     const armTop = bodyTop+1;
-
-    // sleeves (green)
     p(g, leftX, armTop, outfitMain);
     p(g, rightX, armTop, outfitMain);
-
-    // arm swing offset
     let ly = armTop + Math.round(armSwingL/2);
     let ry = armTop + Math.round(armSwingR/2);
-
-    // skin pixels for forearms
     p(g, leftX, ly+1, skin);
     p(g, leftX, ly+2, skin);
     p(g, rightX, ry+1, skin);
@@ -350,60 +308,43 @@ function drawCharacter(g, dir, frameIndex) {
   }
 
   function drawLegsAndBoots() {
-    // hips down from bodyTop+7
     const legTop = bodyTop+7;
     const mid = bodyX+3;
     const lX = mid-2, rX = mid+2;
-
     const lOffset = Math.round(legSwingL/2);
     const rOffset = Math.round(legSwingR/2);
-
-    // thighs (outfit color)
     p(g, lX, legTop + lOffset, outfitShadow);
     p(g, lX, legTop+1 + lOffset, outfitShadow);
     p(g, rX, legTop + rOffset, outfitShadow);
     p(g, rX, legTop+1 + rOffset, outfitShadow);
-
-    // boots
     p(g, lX, legTop+2 + lOffset, boots);
     p(g, lX, legTop+3 + lOffset, boots);
     p(g, rX, legTop+2 + rOffset, boots);
     p(g, rX, legTop+3 + rOffset, boots);
-
-    // small toes (directional slight)
-    if (dir === 1) { // left
+    if (dir === 1) {
       p(g, lX-1, legTop+3 + lOffset, boots);
-    } else if (dir === 2) { // right
+    } else if (dir === 2) {
       p(g, rX+1, legTop+3 + rOffset, boots);
-    } else { // down/up
+    } else {
       p(g, lX, legTop+4 + lOffset, boots);
       p(g, rX, legTop+4 + rOffset, boots);
     }
   }
 
-  // BACK hair first so it sits behind
   drawHairBack();
-  // Head + Face
   drawHeadFront();
   drawFace();
-  // Body
   drawTorso();
-  // Arms
   drawArms();
-  // Legs/Boots
   drawLegsAndBoots();
 
-  // Directional extras
   if (dir === 3) {
-    // a little collar highlight when facing up
     p(g, bodyX+3, bodyTop, "#25a048");
   }
 }
 
-// Build sprite atlas: frames[dir][frame 0..4] => canvas
 const frames = [[],[],[],[]];
 for (let dir = 0; dir < 4; dir++) {
-  // 0 idle, 1..4 walk
   for (let f = 0; f < 5; f++) {
     frames[dir][f] = makeFrame((g) => drawCharacter(g, dir, f));
   }
@@ -415,55 +356,44 @@ for (let dir = 0; dir < 4; dir++) {
 const player = {
   x: 120, y: 120,
   w: DRAW_W, h: DRAW_H,
-  speed: 180, // px/sec
-  dir: 0, // 0 down,1 left,2 right,3 up
+  speed: 180,
+  dir: 0,
   frame: 0,
   animTime: 0,
-  animSpeed: 9, // frames per second for walking
+  animSpeed: 9,
   moving: false,
 };
 
-// Axis-aligned rect collision helper
 function rectsOverlap(a, b) {
   return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h);
 }
 
 function tryMove(dt, dx, dy) {
-  // propose move
   const next = { x: player.x + dx, y: player.y + dy, w: player.w, h: player.h };
-  // Use a smaller collision box around the legs area (bottom third) to feel right
   const feet = { x: next.x + player.w*0.25, y: next.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
 
-  // screen bounds
   if (feet.x < 0) next.x = player.x; 
   if (feet.y < 0) next.y = player.y; 
   if (feet.x + feet.w > W) next.x = player.x; 
   if (feet.y + feet.h > H) next.y = player.y;
 
-  // solids
   for (const s of solidRects) {
     if (rectsOverlap(feet, s)) {
-      // naive separation: cancel this move on the axis that caused overlap
-      // test x only
       const testX = { x: player.x + dx, y: player.y, w: player.w, h: player.h };
       const feetX = { x: testX.x + player.w*0.25, y: testX.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
       if (!rectsOverlap(feetX, s)) {
-        player.x += dx; // x ok
-        return;         // skip y
+        player.x += dx;
+        return;
       }
-      // test y only
       const testY = { x: player.x, y: player.y + dy, w: player.w, h: player.h };
       const feetY = { x: testY.x + player.w*0.25, y: testY.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
       if (!rectsOverlap(feetY, s)) {
-        player.y += dy; // y ok
-        return;         // skip x
+        player.y += dy;
+        return;
       }
-      // neither ok -> block
       return;
     }
   }
-
-  // no collisions
   player.x = next.x;
   player.y = next.y;
 }
@@ -475,7 +405,6 @@ let last = 0;
 let running = false;
 
 function update(dt) {
-  // movement
   let vx = 0, vy = 0;
   if (keys.has("arrowleft") || keys.has("a")) vx -= 1;
   if (keys.has("arrowright")|| keys.has("d")) vx += 1;
@@ -483,12 +412,10 @@ function update(dt) {
   if (keys.has("arrowdown") || keys.has("s")) vy += 1;
 
   player.moving = (vx !== 0 || vy !== 0);
-  // normalize diagonal
   if (player.moving) {
     const len = Math.hypot(vx, vy) || 1;
     vx /= len; vy /= len;
 
-    // direction priority by last key pressed feel:
     if (Math.abs(vx) > Math.abs(vy)) {
       player.dir = (vx < 0) ? 1 : 2;
     } else if (Math.abs(vy) > 0) {
@@ -500,22 +427,18 @@ function update(dt) {
     tryMove(dt, dx, dy);
   }
 
-  // animation
   if (player.moving) {
     player.animTime += dt * player.animSpeed;
-    const step = Math.floor(player.animTime) % 4; // 0..3
-    player.frame = 1 + step; // 1..4 for walk
+    const step = Math.floor(player.animTime) % 4;
+    player.frame = 1 + step;
   } else {
     player.animTime = 0;
-    player.frame = 0; // idle
+    player.frame = 0;
   }
 }
 
 function render() {
-  // draw map
   ctx.drawImage(mapBuffer, 0, 0);
-
-  // draw player
   const img = frames[player.dir][player.frame];
   ctx.save();
   ctx.imageSmoothingEnabled = false;
@@ -526,11 +449,15 @@ function render() {
     DRAW_W, DRAW_H
   );
   ctx.restore();
+  ctx.fillStyle = "white";
+  ctx.font = "20px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("ana", Math.round(player.x + DRAW_W/2), Math.round(player.y) - 10);
 }
 
 function loop(ts) {
   if (!running) return;
-  const dt = Math.min(0.033, (ts - last) / 1000 || 0); // clamp dt
+  const dt = Math.min(0.033, (ts - last) / 1000 || 0);
   last = ts;
   update(dt);
   render();
@@ -552,7 +479,6 @@ document.getElementById("startBtn").addEventListener("click", () => {
    Init
    ========================= */
 resize();
-// place player somewhere central
 player.x = (W - DRAW_W)/2;
 player.y = (H - DRAW_H)/2;
 
