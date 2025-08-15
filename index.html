@@ -2,171 +2,138 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Terraria Style Adventure</title>
+<title>Adventure Game</title>
 <style>
-  body {
-    margin: 0;
-    background-color: #87ceeb;
-    overflow: hidden;
+  body { margin: 0; background: black; overflow: hidden; }
+  canvas { display: block; margin: auto; background: black; }
+  #startScreen {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: black; display: flex; align-items: center; justify-content: center; flex-direction: column;
+    z-index: 2;
   }
-  canvas {
-    image-rendering: pixelated;
-    display: block;
-    margin: 0 auto;
-    background-color: #5cb85c;
+  #startBtn {
+    padding: 15px 30px; font-size: 20px; cursor: pointer;
+    background: white; border: none; border-radius: 5px;
   }
 </style>
 </head>
 <body>
-<canvas id="gameCanvas" width="800" height="600"></canvas>
+
+<div id="startScreen">
+  <button id="startBtn">Start Game</button>
+</div>
+
+<canvas id="gameCanvas" width="640" height="480"></canvas>
+
 <script>
+// ==== SETTINGS ====
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
+const TILE_SIZE = 32;
+const MAP_WIDTH = 20;
+const MAP_HEIGHT = 15;
 
-const scale = 4; // makes sprite bigger but still pixel-perfect
+// ==== TILES ====
+const grassTile = "#3cb043";
+const flowerTile = "#3cb043";
+const treeTile = "#2d572c";
 
-// Create sprite sheet dynamically
-const spriteCanvas = document.createElement("canvas");
-spriteCanvas.width = 16 * 3; // 3 frames: idle, walk1, walk2
-spriteCanvas.height = 32;
-const sctx = spriteCanvas.getContext("2d");
-
-// Draw idle frame
-function drawCharacterFrame(ctx, frame) {
-  ctx.clearRect(0, 0, 16, 32);
-  // Skin
-  ctx.fillStyle = "#deb887";
-  ctx.fillRect(6, 0, 4, 8); // head
-  ctx.fillRect(6, 8, 4, 12); // body skin (hands)
-  // Hair (brown)
-  ctx.fillStyle = "#8b4513";
-  ctx.fillRect(4, 0, 8, 4); // top hair
-  ctx.fillRect(5, 4, 6, 4); // sides
-  ctx.fillRect(6, 2, 4, 6); // bangs
-  // Outfit (green shirt)
-  ctx.fillStyle = "#228B22";
-  ctx.fillRect(4, 8, 8, 8); // torso
-  // Legs (pants - dark green)
-  ctx.fillStyle = "#006400";
-  ctx.fillRect(4, 16, 4, 8);
-  ctx.fillRect(8, 16, 4, 8);
-  // Boots (brown)
-  ctx.fillStyle = "#654321";
-  ctx.fillRect(4, 24, 4, 4);
-  ctx.fillRect(8, 24, 4, 4);
+// ==== MAP GEN ====
+let map = [];
+for (let y=0; y<MAP_HEIGHT; y++) {
+  let row = [];
+  for (let x=0; x<MAP_WIDTH; x++) {
+    let r = Math.random();
+    if (r < 0.05) row.push("tree");
+    else if (r < 0.10) row.push("flower");
+    else row.push("grass");
+  }
+  map.push(row);
 }
 
-// Draw walking frames (slightly different leg positions)
-function drawWalkingFrame(ctx, step) {
-  ctx.clearRect(0, 0, 16, 32);
-  // Skin
-  ctx.fillStyle = "#deb887";
-  ctx.fillRect(6, 0, 4, 8);
-  ctx.fillRect(6, 8, 4, 12);
-  // Hair
-  ctx.fillStyle = "#8b4513";
-  ctx.fillRect(4, 0, 8, 4);
-  ctx.fillRect(5, 4, 6, 4);
-  ctx.fillRect(6, 2, 4, 6);
-  // Outfit
-  ctx.fillStyle = "#228B22";
-  ctx.fillRect(4, 8, 8, 8);
-  // Legs
-  ctx.fillStyle = "#006400";
-  if (step === 1) {
-    ctx.fillRect(3, 16, 4, 8); // left forward
-    ctx.fillRect(9, 16, 4, 8); // right back
-  } else {
-    ctx.fillRect(5, 16, 4, 8); // left back
-    ctx.fillRect(7, 16, 4, 8); // right forward
-  }
-  // Boots
-  ctx.fillStyle = "#654321";
-  if (step === 1) {
-    ctx.fillRect(3, 24, 4, 4);
-    ctx.fillRect(9, 24, 4, 4);
-  } else {
-    ctx.fillRect(5, 24, 4, 4);
-    ctx.fillRect(7, 24, 4, 4);
-  }
-}
+// ==== PLAYER SPRITE (Base64 embedded) ====
+const playerImage = new Image();
+playerImage.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAgCAYAAABU8VtVAAAACXBIWXMAAA7EAAAOxAGVKw4bAAABrElEQVR4nO2ZQY6CMBBF5x+lhMnBzNo1tL9U1iVdo9E6+3TeF8R+CyYkHByS9dNyoqpH8oxM14a2npfBI4AgghhBBCCCFEniJ2mQ12B3q6uqEalV6I6zB5lM1TwZqh3QYzvA5cHoQ1mP6yGQEtw6BA9LkZpPpiDqkAh28wKz9x2hRpu9aj1HkqzAq2J9EbF6BtHfUgPiwzIAvQmKfQqxdKfVJ6PUb00XqDk+SDQH9jLrt20RgNIV9zMKkjO7osbM4Dfo1nn7m8N8mYdTf2ctjJoUWy2ZbZu8F+EpGCD8DUTWmF1AIDK2qN28jGFQBt1Y9ahWyHe1C6kBxANvC9LOoV0rgBWkkpSAeAbCN+B1wBu7N2B/IEko5X1kXgI6DPzYzP+M+BBQ0jxH1Bu1GcO3BgrLMuIMJX4AwcV1e2L6wkL5+6i1D7GXgFWvmSMTwiC7zRXgJwPq5qkMXxg1wAAAABJRU5ErkJggg==";
 
-// Generate sprite sheet
-drawCharacterFrame(sctx, 0);
-const idleImg = sctx.getImageData(0, 0, 16, 32);
-sctx.putImageData(idleImg, 0, 0);
+// Sprite info
+let player = {
+  x: 5 * TILE_SIZE,
+  y: 5 * TILE_SIZE,
+  frame: 0,
+  dir: "down",
+  moving: false,
+  speed: 2
+};
 
-drawWalkingFrame(sctx, 1);
-const walk1 = sctx.getImageData(0, 0, 16, 32);
-sctx.putImageData(walk1, 16, 0);
+const keys = {};
 
-drawWalkingFrame(sctx, 2);
-const walk2 = sctx.getImageData(0, 0, 16, 32);
-sctx.putImageData(walk2, 32, 0);
-
-// Game state
-let playerX = 400;
-let playerY = 300;
-let velX = 0;
-let velY = 0;
-let speed = 2;
-let keys = {};
-let frameIndex = 0;
-let frameTimer = 0;
-
-// Input
-window.addEventListener("keydown", e => keys[e.key] = true);
-window.addEventListener("keyup", e => keys[e.key] = false);
-
-function update() {
-  velX = 0;
-  velY = 0;
-  if (keys["ArrowUp"] || keys["w"]) velY = -speed;
-  if (keys["ArrowDown"] || keys["s"]) velY = speed;
-  if (keys["ArrowLeft"] || keys["a"]) velX = -speed;
-  if (keys["ArrowRight"] || keys["d"]) velX = speed;
-
-  playerX += velX;
-  playerY += velY;
-
-  // Animation timing
-  if (velX !== 0 || velY !== 0) {
-    frameTimer++;
-    if (frameTimer >= 10) {
-      frameIndex = (frameIndex + 1) % 2;
-      frameTimer = 0;
+// ==== DRAW MAP ====
+function drawMap() {
+  for (let y=0; y<MAP_HEIGHT; y++) {
+    for (let x=0; x<MAP_WIDTH; x++) {
+      if (map[y][x] === "grass") {
+        ctx.fillStyle = grassTile;
+        ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+      }
+      if (map[y][x] === "flower") {
+        ctx.fillStyle = grassTile;
+        ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        ctx.fillStyle = "pink";
+        ctx.beginPath();
+        ctx.arc(x*TILE_SIZE+16, y*TILE_SIZE+16, 4, 0, Math.PI*2);
+        ctx.fill();
+      }
+      if (map[y][x] === "tree") {
+        ctx.fillStyle = treeTile;
+        ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        ctx.fillStyle = "green";
+        ctx.beginPath();
+        ctx.arc(x*TILE_SIZE+16, y*TILE_SIZE+16, 14, 0, Math.PI*2);
+        ctx.fill();
+      }
     }
-  } else {
-    frameIndex = -1; // idle
   }
 }
 
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  let spriteX;
-  if (frameIndex === -1) {
-    spriteX = 0; // idle
-  } else if (frameIndex === 0) {
-    spriteX = 16; // walk1
-  } else {
-    spriteX = 32; // walk2
-  }
-
-  ctx.drawImage(
-    spriteCanvas,
-    spriteX, 0, 16, 32,
-    Math.floor(playerX), Math.floor(playerY), 16 * scale, 32 * scale
-  );
+// ==== DRAW PLAYER ====
+function drawPlayer() {
+  ctx.drawImage(playerImage, player.frame*32, 0, 32, 32, player.x, player.y, 32, 32);
 }
 
+// ==== UPDATE ====
+function update() {
+  player.moving = false;
+  if (keys["ArrowUp"]) { player.y -= player.speed; player.moving = true; player.dir="up"; }
+  if (keys["ArrowDown"]) { player.y += player.speed; player.moving = true; player.dir="down"; }
+  if (keys["ArrowLeft"]) { player.x -= player.speed; player.moving = true; player.dir="left"; }
+  if (keys["ArrowRight"]) { player.x += player.speed; player.moving = true; player.dir="right"; }
+
+  if (player.moving) {
+    player.frame = (player.frame + 0.1) % 4; // animation
+  } else {
+    player.frame = 0; // idle
+  }
+}
+
+// ==== GAME LOOP ====
 function gameLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawMap();
+  drawPlayer();
   update();
-  draw();
   requestAnimationFrame(gameLoop);
 }
 
-gameLoop();
+// ==== INPUT ====
+document.addEventListener("keydown", e => { keys[e.key] = true; });
+document.addEventListener("keyup", e => { keys[e.key] = false; });
+
+// ==== START GAME ====
+document.getElementById("startBtn").addEventListener("click", () => {
+  document.getElementById("startScreen").style.display = "none";
+  gameLoop();
+});
 </script>
+
 </body>
 </html>
