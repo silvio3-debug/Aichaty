@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Pixel Adventure</title>
+<title>Game for Princess</title>
 <style>
   html, body {
     margin: 0;
     height: 100%;
     background: #000;
     overflow: hidden;
-    font-family: system-ui, sans-serif;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, "Twemoji Mozilla", "Segoe UI Symbol", "Android Emoji", "EmojiSymbols";
   }
   #game {
     display: block;
@@ -18,8 +18,20 @@
     height: 100vh;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
-    background: #000; /* covered by map render */
+    background: #000; /* will be covered by map render */
   }
+
+  /* Overlays (start/prompt/dialog/gameover/HUD share some basics) */
+  .overlay,
+  .prompt,
+  .dialog,
+  .gameover,
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+  }
+
   /* Start overlay */
   #startOverlay {
     position: fixed;
@@ -29,13 +41,15 @@
     align-items:center;
     justify-content:center;
     flex-direction:column;
-    z-index: 5;
+    z-index: 1000;
+    pointer-events: auto;
   }
   #title {
     color:#fff;
     font-size: clamp(18px, 3vw, 32px);
     margin-bottom: 18px;
     letter-spacing: 1px;
+    user-select: none;
   }
   #startBtn {
     background:#fff;
@@ -45,22 +59,122 @@
     font-size: clamp(14px, 2.2vw, 18px);
     border-radius: 8px;
     cursor: pointer;
+    pointer-events: auto;
   }
   #startBtn:active { transform: translateY(1px); }
 
-  /* Dialog / prompts */
-  .prompt, .dialog, .gameover, .hud {
-    position: fixed; left: 50%; transform: translateX(-50%);
-    color: #fff; text-align: center; font-weight: 600;
-    text-shadow: 0 2px 0 rgba(0,0,0,.5);
+  /* Prompt bubble (“Press E to accept quest”) */
+  .prompt {
+    display:none;
+    z-index: 20;
+  }
+  .prompt .bubble {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    background: rgba(0,0,0,0.75);
+    color: #fff;
+    border: 2px solid #fff;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 14px;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* Dialog box (non-skippable until finished) */
+  .dialog {
+    display:none;
+    z-index: 30;
+  }
+  .dialog .box {
+    position: absolute;
+    left: 50%;
+    bottom: 8%;
+    transform: translateX(-50%);
+    width: min(90vw, 700px);
+    background: rgba(0,0,0,0.85);
+    border: 2px solid #fff;
+    border-radius: 12px;
+    color: #fff;
+    padding: 16px 18px;
+    line-height: 1.45;
+    font-size: clamp(14px, 2vw, 18px);
+    pointer-events: auto;
+  }
+  .dialog .continue {
+    display:block;
+    margin-top: 10px;
+    font-size: 12px;
+    opacity: 0.85;
+    user-select: none;
+  }
+
+  /* Game Over overlay */
+  .gameover {
+    display: none;
+    z-index: 50;
+  }
+  .gameover .center {
+    position: absolute;
+    left:50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.88);
+    color: #fff;
+    border: 2px solid #fff;
+    border-radius: 12px;
+    padding: 18px 20px;
+    text-align: center;
+    width: min(90vw, 420px);
+    pointer-events: auto;
+  }
+  .gameover .center h2 {
+    margin: 6px 0 10px 0;
+    font-size: 22px;
+  }
+  .gameover .center button {
+    margin-top: 12px;
+    background:#fff;
+    color:#000;
+    border: none;
+    padding: 10px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  /* HUD (Hearts + Gold) — FIXED: center the gold at the very top */
+  .hud {
+    top: 10px; width: 100%; transform: none; left: 0; display:flex; justify-content: center; align-items: center; padding: 0 12px;
+    z-index: 40;
     pointer-events: none;
   }
-  .prompt { bottom: 8vh; background: rgba(0,0,0,.45); padding: 8px 12px; border-radius: 8px; }
-  .dialog { bottom: 12vh; width: min(92vw, 700px); background: rgba(0,0,0,.6); padding: 14px 16px; border-radius: 10px; }
-  .gameover { top: 20vh; font-size: clamp(22px, 4vw, 42px); }
-  .hud { top: 10px; width: 100%; transform: none; left: 0; display:flex; justify-content: space-between; padding: 0 12px; }
-  #restartBtn {
-    margin-top: 16px; padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer;
+  /* keep hearts on the left while gold stays centered */
+  #hearts { position: absolute; left: 12px; top: 10px; }
+
+  .hud .gold {
+    background: rgba(0,0,0,0.72);
+    color: #fff;
+    border: 2px solid #fff;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 14px;
+    line-height: 1;
+    user-select: none;
+  }
+  .hud .hearts {
+    display:flex;
+    gap: 6px;
+  }
+  .hud .heart {
+    width: 18px;
+    height: 18px;
+    background: #c9223a;
+    border: 2px solid #fff;
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.4) inset;
+  }
+  .hud .heart.empty {
+    background: rgba(0,0,0,0.4);
   }
 </style>
 </head>
@@ -68,26 +182,38 @@
 
 <canvas id="game"></canvas>
 
+<!-- HUD -->
+<div class="hud" aria-hidden="true">
+  <div id="hearts" class="hearts"></div>
+  <div id="gold" class="gold">Gold: 0</div>
+</div>
+
+<!-- NPC prompt bubble -->
+<div id="prompt" class="prompt" aria-hidden="true">
+  <div id="promptBubble" class="bubble">Press E to accept quest</div>
+</div>
+
+<!-- Dialog box -->
+<div id="dialog" class="dialog" aria-hidden="true">
+  <div class="box" id="dialogBox">
+    <div id="dialogText">Will you accept my quest my love?</div>
+    <span class="continue" id="dialogContinue">Press Space to continue</span>
+  </div>
+</div>
+
+<!-- Start overlay -->
 <div id="startOverlay">
   <div id="title">Pixel Adventure</div>
   <button id="startBtn">Start Game</button>
 </div>
 
-<!-- HUD -->
-<div class="hud" id="hud" style="display:none; justify-content:center; gap:40px;">
-  <div id="hearts"></div>
-  <div id="gold" style="font-size:18px;">Gold: 0</div>
-</div>
-
-
-<!-- Context prompts & dialog -->
-<div class="prompt" id="prompt" style="display:none;"></div>
-<div class="dialog" id="dialog" style="display:none;"></div>
-
-<!-- Game Over -->
-<div class="gameover" id="gameover" style="display:none;">
-  <div>Game Over</div>
-  <button id="restartBtn">Restart</button>
+<!-- Game Over overlay -->
+<div id="gameOver" class="gameover" aria-hidden="true">
+  <div class="center">
+    <h2>Game Over</h2>
+    <p>Press the button to restart.</p>
+    <button id="restartBtn">Restart</button>
+  </div>
 </div>
 
 <script>
@@ -102,7 +228,8 @@ function resize() {
   W = canvas.width  = Math.floor(window.innerWidth);
   H = canvas.height = Math.floor(window.innerHeight);
   ctx.imageSmoothingEnabled = false;
-  buildStaticMap(); // rebuild current world map
+  buildSnowMap(); // snow world builder
+  rebuildHearts();
 }
 window.addEventListener("resize", resize);
 
@@ -110,12 +237,13 @@ window.addEventListener("resize", resize);
    Input handling
    ========================= */
 const keys = new Set();
-let lastPressedDir = 'down';
+let lastPressedKey = null;
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   const moveKeys = ["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"," "];
   if (moveKeys.includes(k)) e.preventDefault();
   keys.add(k);
+  lastPressedKey = k;
 });
 window.addEventListener("keyup", (e) => {
   keys.delete(e.key.toLowerCase());
@@ -128,119 +256,80 @@ function rand(min, max) { return Math.random() * (max - min) + min; }
 function randi(min, max) { return Math.floor(rand(min, max)); }
 
 /* =========================
-   Worlds / map (static, full screen)
+   Snow Map (static, full screen)
    ========================= */
 let mapBuffer, mapCtx;
-let solidRects = []; // collision solids (e.g., trunks)
-let world = "grass"; // "grass" | "snow"
-let questAccepted = false;
+let solidRects = []; // collision solids (tree trunks)
+let portalDoor = { x: 0, y: 0, w: 42, h: 56 };
 
-// Door to snow world (appears after quest accepted)
-const door = {x: 0, y: 0, w: 36, h: 56, visible: false};
-
-function buildStaticMap() {
+function buildSnowMap() {
   mapBuffer = document.createElement("canvas");
   mapBuffer.width = W;
   mapBuffer.height = H;
   mapCtx = mapBuffer.getContext("2d");
   mapCtx.imageSmoothingEnabled = false;
-  solidRects = [];
 
-  if (world === "grass") drawGrassWorld();
-  else drawSnowWorld();
-}
-
-function drawGrassWorld() {
-  // Base grass
-  mapCtx.fillStyle = "#6ac36a";
+  // Base snow
+  mapCtx.fillStyle = "#dfe8f3";
   mapCtx.fillRect(0,0,W,H);
 
-  // Subtle grass noise tiles (tiny squares)
+  // Subtle snow noise tiles
   const cell = 8;
   for (let y = 0; y < H; y += cell) {
     for (let x = 0; x < W; x += cell) {
       const v = Math.random();
-      if (v < 0.18) {
-        mapCtx.fillStyle = "#64bb64";
+      if (v < 0.12) {
+        mapCtx.fillStyle = "#d7e0eb";
         mapCtx.fillRect(x, y, cell, cell);
-      } else if (v < 0.28) {
-        mapCtx.fillStyle = "#71cd71";
+      } else if (v < 0.20) {
+        mapCtx.fillStyle = "#e9f2fc";
         mapCtx.fillRect(x, y, cell, cell);
       }
     }
   }
 
-  // Flowers
-  const flowerCount = Math.floor((W*H) / 12000);
-  for (let i = 0; i < flowerCount; i++) {
-    const x = randi(8, W-8);
-    const y = randi(8, H-8);
-    const type = randi(0,3);
-    mapCtx.fillStyle = (type===0) ? "#ffe6f2" : (type===1) ? "#fff8a6" : "#b0e3ff";
-    mapCtx.fillRect(x, y, 3, 3);
-    mapCtx.fillRect(x+2, y+1, 2, 2);
-    mapCtx.fillRect(x-1, y+1, 2, 2);
-    mapCtx.fillStyle = "#2f7b2f";
-    mapCtx.fillRect(x+1, y+3, 1, 3);
+  // Snowy puffs
+  const puffCount = Math.floor((W*H) / 70000);
+  for (let i = 0; i < puffCount; i++) {
+    const x = randi(12, W-12);
+    const y = randi(12, H-12);
+    mapCtx.fillStyle = "#ffffff";
+    mapCtx.beginPath();
+    mapCtx.arc(x, y, randi(6,12), 0, Math.PI*2);
+    mapCtx.fill();
+    mapCtx.fillStyle = "#cbd6e2";
+    mapCtx.beginPath();
+    mapCtx.arc(x-4, y-2, randi(3,8), 0, Math.PI*2);
+    mapCtx.fill();
   }
 
-  // Trees
+  // Snowy trees
+  solidRects = [];
   const treeCount = Math.floor((W*H) / 50000);
   for (let i = 0; i < treeCount; i++) {
     const x = randi(60, W-60);
     const y = randi(60, H-60);
-    drawTree(mapCtx, x, y, false);
+    drawSnowTree(mapCtx, x, y);
   }
 
-  // Door appears after quest accepted
-  door.visible = questAccepted;
-  if (door.visible) {
-    // place near top-right area
-    door.x = Math.floor(W - 120);
-    door.y = Math.floor(80);
-    drawDoor(mapCtx, door.x, door.y, door.w, door.h);
-  }
+  // Portal door near top-right area (not exactly in the corner)
+  portalDoor.x = Math.floor(W * 0.82);
+  portalDoor.y = Math.floor(H * 0.15);
+  drawPortal(mapCtx, portalDoor.x, portalDoor.y, portalDoor.w, portalDoor.h);
 }
 
-function drawSnowWorld() {
-  // Snow base
-  mapCtx.fillStyle = "#e8f4ff";
-  mapCtx.fillRect(0,0,W,H);
-
-  // Snow texture (noise)
-  const cell = 8;
-  for (let y = 0; y < H; y += cell) {
-    for (let x = 0; x < W; x += cell) {
-      const v = Math.random();
-      if (v < 0.2) {
-        mapCtx.fillStyle = "#dcecff";
-        mapCtx.fillRect(x, y, cell, cell);
-      } else if (v < 0.28) {
-        mapCtx.fillStyle = "#f3f9ff";
-        mapCtx.fillRect(x, y, cell, cell);
-      }
-    }
-  }
-
-  // Pines
-  const pineCount = Math.floor((W*H) / 60000);
-  for (let i = 0; i < pineCount; i++) {
-    drawPine(mapCtx, randi(60, W-60), randi(70, H-60));
-  }
-}
-
-function drawTree(g, x, y, snowy=false) {
-  // Foliage: layered circles
-  g.fillStyle = snowy ? "#356a4b" : "#2e8b57";
+function drawSnowTree(g, x, y) {
+  // Foliage (evergreen with snow caps)
+  g.fillStyle = "#2f6b4f";
   for (let r = 26; r >= 18; r -= 4) {
     g.beginPath();
     g.arc(x, y, r, 0, Math.PI*2);
     g.fill();
   }
-  // Highlights / snow cap
-  g.fillStyle = snowy ? "#eaf5ff" : "#3da86e";
+  // Snow caps
+  g.fillStyle = "#ffffff";
   g.beginPath();
-  g.arc(x-8, y-8, 10, 0, Math.PI*2);
+  g.arc(x-6, y-10, 8, 0, Math.PI*2);
   g.fill();
 
   // Trunk (solid rect)
@@ -254,38 +343,28 @@ function drawTree(g, x, y, snowy=false) {
   solidRects.push({x: tx, y: ty, w: trunkW, h: trunkH});
 }
 
-function drawPine(g, x, y) {
-  // simple triangle stack
-  const trunkW = 10, trunkH = 22;
-  g.fillStyle = "#8b5a2b";
-  g.fillRect(x- trunkW/2, y+8, trunkW, trunkH);
-  solidRects.push({x: x- trunkW/2, y: y+8, w: trunkW, h: trunkH});
-
-  g.fillStyle = "#2e5e48";
-  g.beginPath(); g.moveTo(x, y-20); g.lineTo(x-26, y+8); g.lineTo(x+26, y+8); g.closePath(); g.fill();
-  g.beginPath(); g.moveTo(x, y-8); g.lineTo(x-22, y+16); g.lineTo(x+22, y+16); g.closePath(); g.fill();
-
-  // snowy cap
-  g.fillStyle = "#ffffff";
-  g.beginPath(); g.moveTo(x, y-24); g.lineTo(x-10, y-6); g.lineTo(x+10, y-6); g.closePath(); g.fill();
-}
-
-function drawDoor(g, x, y, w, h) {
-  // wooden portal
-  g.fillStyle = "#6b4a2b";
-  g.fillRect(x, y, w, h);
-  g.fillStyle = "#835c34";
-  g.fillRect(x+4, y+4, w-8, h-8);
-  g.fillStyle = "#2a241f";
-  g.fillRect(x+w/2-2, y+h-14, 4, 8);
+function drawPortal(g, x, y, w, h) {
+  // little snow shrine door
+  g.save();
+  g.translate(x, y);
+  g.fillStyle = "#4d4f83";
+  g.fillRect(0, 0, w, h);
+  g.fillStyle = "#c9d2ff";
+  g.fillRect(6, 6, w-12, h-12);
+  // glow
+  g.globalAlpha = 0.25;
+  g.fillStyle = "#8fb0ff";
+  g.fillRect(-4, -4, w+8, h+8);
+  g.restore();
 }
 
 /* =========================
-   Character sprite builders
-   Terraria-ish 8-bit, 16x24 base, scaled x4
+   Character sprite builders (Ana + Silvio + Zombies)
+   Directions: 0=down,1=left,2=right,3=up
+   Frames: idle(0), walk1(1), walk2(2), walk3(3), walk4(4)
    ========================= */
 const BASE_W = 16, BASE_H = 24;
-const SCALE = 4; // 16x24 -> 64x96 on screen
+const SCALE = 4;
 const DRAW_W = BASE_W * SCALE;
 const DRAW_H = BASE_H * SCALE;
 
@@ -299,58 +378,48 @@ function makeFrame(drawFn) {
 }
 function p(g, x, y, color) { g.fillStyle = color; g.fillRect(x, y, 1, 1); }
 
-// ====== Palettes ======
-const skin = "#f0c8a8";
-const hair = "#5a3a21";
-const hairHL = "#6b482b";
-const eyes = "#2a2a2a";
-const outfitMain = "#1f8a3c";   // Ana green
-const outfitShadow = "#166a2e";
-const boots = "#4b3928";
-const belt = "#2e2e2e";
-// Silvio palette
-const outfitMainSilvio = "#2c57b4";  // blue
-const outfitShadowSilvio = "#223f82";
-const hairSilvio = "#4b3420";
+/* ===== Ana palette ===== */
+const ANA = {
+  skin: "#f0c8a8",
+  hair: "#5a3a21",
+  hairHL: "#6b482b",
+  eyes: "#2a2a2a",
+  outfitMain: "#1f8a3c",
+  outfitShadow: "#166a2e",
+  boots: "#4b3928",
+  belt: "#2e2e2e",
+  sword: "#c9c9c9",
+  swordEdge: "#f2f2f2",
+  swordGrip: "#4b3928",
+};
 
-// Sword palette
-const swordBlade = "#cfd7df";
-const swordEdge  = "#ffffff";
-const swordHilt  = "#8b6a2b";
+/* ===== Silvio palette (taller/more muscular, brown hair, different outfit color) ===== */
+const SILVIO = {
+  skin: "#e8c09a",
+  hair: "#6b3f1f",
+  hairHL: "#7b4a27",
+  eyes: "#1e1e1e",
+  outfitMain: "#245a9b",   // blue
+  outfitShadow: "#1b4a7f",
+  boots: "#3c2e22",
+  belt: "#1f1f1f",
+};
 
-// ====== Sword anim config ======
-const swingFrames = 4;
-const swingDuration = 0.22; // sec
-const swingCooldown = 0.28; // sec (from start)
-let swingTimer = 0;   // time since swing started
-let canSwingAt = 0;   // timestamp allowed
+/* ===== Zombie palette (pixel gore) ===== */
+const ZOMBIE = {
+  skin: "#9bb38d",
+  shadow: "#7f9971",
+  eyes: "#1a1a1a",
+  teeth: "#f0f0f0",
+  blood: "#8b0000",
+  shirt: "#5d5d5d",
+  pants: "#3a3a3a",
+  boots: "#2b2b2b"
+};
 
-// Build Ana frames (0 idle + 4 walk) per dir, sword always in-hand
-const anaFrames = [[],[],[],[]]; // [dir][0..4]
-for (let dir = 0; dir < 4; dir++) {
-  for (let f = 0; f < 5; f++) {
-    anaFrames[dir][f] = makeFrame((g) => drawCharacter(g, dir, f, "ana", true, 0));
-  }
-}
-
-// Build Silvio (taller, a bit muscular). We'll draw with same 16x24 base but scale a bit larger at render.
-const silvioFrames = [[],[],[],[]];
-for (let dir = 0; dir < 4; dir++) {
-  for (let f = 0; f < 5; f++) {
-    silvioFrames[dir][f] = makeFrame((g) => drawCharacter(g, dir, f, "silvio", false, 0));
-  }
-}
-
-/**
- * drawCharacter(g, dir, frameIndex, who, withSword, swingPhaseIndex)
- * who: "ana" | "silvio"
- * withSword: boolean (always true for Ana render, false for Silvio)
- * swingPhaseIndex: 0..3 only used when drawing sword swing frames
- */
-function drawCharacter(g, dir, frameIndex, who="ana", withSword=true, swingPhaseIndex=0) {
+function drawHumanoid(g, pal, dir, frameIndex, tall = false, muscular = false, withSword=false, swordPhase=0) {
   g.clearRect(0,0,BASE_W,BASE_H);
-
-  // Walk offsets
+  // walk offsets
   const walkFrames = [
     {legL: -2, legR: 2, armL: 2, armR: -2},
     {legL: 0,  legR: 0, armL: 0, armR: 0},
@@ -363,7 +432,6 @@ function drawCharacter(g, dir, frameIndex, who="ana", withSword=true, swingPhase
     {headY:-1, bodyY:0, arm:1},
     {headY:0, bodyY:-1, arm:0},
   ];
-
   const isIdle = (frameIndex === 0);
   let headY=0, bodyY=0, armSwingL=0, armSwingR=0, legSwingL=0, legSwingR=0;
   if (isIdle) {
@@ -376,20 +444,16 @@ function drawCharacter(g, dir, frameIndex, who="ana", withSword=true, swingPhase
     legSwingL = w.legL; legSwingR = w.legR;
   }
 
-  // Base anchors
-  const headX = 3, headTop = 2 + headY; // 10x10 face
-  const bodyTop = 12 + bodyY;
+  // base anchors
+  let headTop = 2 + headY;
+  let bodyTop = 12 + bodyY;
   const bodyX = 3;
+  // tall/muscular tweaks
+  if (tall) { headTop -= 1; bodyTop -= 1; }
 
-  // palette per who
-  const hm = (who==="silvio") ? hairSilvio : hair;
-  const hmHL = hairHL;
-  const outM = (who==="silvio") ? outfitMainSilvio : outfitMain;
-  const outS = (who==="silvio") ? outfitShadowSilvio : outfitShadow;
-
-  // Hair back
-  (function drawHairBack(){
-    const col = hm;
+  // hair back
+  (function(){
+    const col = pal.hair || "#444";
     for (let x=2; x<=13; x++) p(g,x,headTop, col);
     for (let x=1; x<=14; x++) p(g,x,headTop+1, col);
     for (let x=1; x<=14; x++) p(g,x,headTop+2, col);
@@ -398,490 +462,563 @@ function drawCharacter(g, dir, frameIndex, who="ana", withSword=true, swingPhase
     p(g,2, headTop+5, col); p(g,13, headTop+5, col);
   })();
 
-  // Head
-  (function drawHeadFront(){
-    for (let y=0; y<8; y++) for (let x=0; x<8; x++) p(g, headX+x, headTop+1+y, skin);
-    for (let x=headX+1; x<=headX+6; x++) p(g, x, headTop+9, skin);
-    if (dir === 0) { p(g, headX, headTop+1, hmHL); p(g, headX+7, headTop+1, hmHL); p(g, headX+2, headTop+1, hm); p(g, headX+5, headTop+1, hm); }
-    else if (dir === 1) { for (let y=0; y<6; y++) p(g, headX, headTop+2+y, hmHL); p(g, headX+1, headTop+2, hmHL); }
-    else if (dir === 2) { for (let y=0; y<6; y++) p(g, headX+7, headTop+2+y, hmHL); p(g, headX+6, headTop+2, hmHL); }
-    else { for (let x=headX; x<headX+8; x++) p(g, x, headTop+1, hm); }
+  // head + face
+  (function(){
+    const skin = pal.skin || "#f0c8a8";
+    for (let y=0; y<8; y++) for (let x=0; x<8; x++) p(g, 3+x, headTop+1+y, skin);
+    for (let x=4; x<=9; x++) p(g, x, headTop+9, skin);
+
+    const hairHL = pal.hairHL || pal.hair;
+    if (dir === 0) { p(g, 3, headTop+1, hairHL); p(g, 10, headTop+1, hairHL); }
+    else if (dir === 1) { for (let y=0; y<6; y++) p(g, 3, headTop+2+y, hairHL); }
+    else if (dir === 2) { for (let y=0; y<6; y++) p(g, 10, headTop+2+y, hairHL); }
+    else { for (let x=3; x<11; x++) p(g, x, headTop+1, pal.hair || "#444"); }
+
+    const eyes = pal.eyes || "#2a2a2a";
+    if (dir === 3) { p(g, 5, headTop+3, eyes); p(g, 8, headTop+3, eyes); }
+    else { p(g, 5, headTop+4, eyes); p(g, 8, headTop+4, eyes); p(g, 6, headTop+6, "#aa6a6a"); }
   })();
 
-  // Face (Ana has round glasses)
-  (function drawFace(){
-    if (dir === 3) { p(g, headX+2, headTop+3, eyes); p(g, headX+5, headTop+3, eyes); }
-    else { p(g, headX+2, headTop+4, eyes); p(g, headX+5, headTop+4, eyes); p(g, headX+3, headTop+6, "#aa6a6a"); }
-    if (who === "ana" && dir !== 3) {
-      // tiny round glasses (2px radius hint)
-      p(g, headX+1, headTop+3, "#000000");
-      p(g, headX+6, headTop+3, "#000000");
-      p(g, headX+3, headTop+4, "#000000"); // bridge dot
+  // torso
+  (function(){
+    const main = pal.outfitMain || "#1f8a3c";
+    const sh   = pal.outfitShadow || "#166a2e";
+    const w = muscular ? 9 : 8;
+    for (let y=0; y<6; y++) for (let x=0; x<w; x++) p(g, bodyX+x, bodyTop+y, (y >= 2) ? sh : main);
+    // belt
+    const belt = pal.belt || "#2e2e2e";
+    for (let x=bodyX; x<bodyX+w; x++) p(g, x, bodyTop+6, belt);
+  })();
+
+  // arms
+  (function(){
+    const leftX  = 2, rightX = 12;
+    const armTop = bodyTop+1;
+    const main = pal.outfitMain || "#1f8a3c";
+    const skin = pal.skin || "#f0c8a8";
+
+    p(g, leftX, armTop, main);
+    p(g, rightX, armTop, main);
+
+    let ly = armTop + Math.round(armSwingL/2);
+    let ry = armTop + Math.round(armSwingR/2);
+
+    p(g, leftX, ly+1, skin);
+    p(g, leftX, ly+2, skin);
+    p(g, rightX, ry+1, skin);
+    p(g, rightX, ry+2, skin);
+
+    // sword in right hand (always in hand), multi-frame swing (phase 0..3)
+    if (withSword) {
+      // small sword pixels relative to right hand
+      const grip = pal.swordGrip || "#4b3928";
+      const blade = pal.sword || "#c9c9c9";
+      const edge = pal.swordEdge || "#f2f2f2";
+      // anchor near right hand
+      let sx = rightX, sy = ry+2;
+      if (dir === 0) { // down
+        if (swordPhase === 0) { p(g, sx, sy, grip); p(g, sx+1, sy-1, blade); p(g, sx+2, sy-2, edge); }
+        if (swordPhase === 1) { p(g, sx, sy, grip); p(g, sx+1, sy, blade); p(g, sx+2, sy, edge); }
+        if (swordPhase === 2) { p(g, sx, sy, grip); p(g, sx, sy+1, blade); p(g, sx, sy+2, edge); }
+        if (swordPhase === 3) { p(g, sx, sy, grip); p(g, sx-1, sy, blade); p(g, sx-2, sy, edge); }
+      } else if (dir === 1) { // left
+        if (swordPhase === 0) { p(g, sx, sy, grip); p(g, sx-1, sy-1, blade); p(g, sx-2, sy-2, edge); }
+        if (swordPhase === 1) { p(g, sx, sy, grip); p(g, sx-1, sy, blade); p(g, sx-2, sy, edge); }
+        if (swordPhase === 2) { p(g, sx, sy, grip); p(g, sx, sy+1, blade); p(g, sx, sy+2, edge); }
+        if (swordPhase === 3) { p(g, sx, sy, grip); p(g, sx+1, sy, blade); p(g, sx+2, sy, edge); }
+      } else if (dir === 2) { // right
+        if (swordPhase === 0) { p(g, sx, sy, grip); p(g, sx+1, sy-1, blade); p(g, sx+2, sy-2, edge); }
+        if (swordPhase === 1) { p(g, sx, sy, grip); p(g, sx+1, sy, blade); p(g, sx+2, sy, edge); }
+        if (swordPhase === 2) { p(g, sx, sy, grip); p(g, sx, sy+1, blade); p(g, sx, sy+2, edge); }
+        if (swordPhase === 3) { p(g, sx, sy, grip); p(g, sx-1, sy, blade); p(g, sx-2, sy, edge); }
+      } else { // up
+        if (swordPhase === 0) { p(g, sx, sy, grip); p(g, sx, sy-1, blade); p(g, sx, sy-2, edge); }
+        if (swordPhase === 1) { p(g, sx, sy, grip); p(g, sx-1, sy-1, blade); p(g, sx-2, sy-2, edge); }
+        if (swordPhase === 2) { p(g, sx, sy, grip); p(g, sx-1, sy, blade); p(g, sx-2, sy, edge); }
+        if (swordPhase === 3) { p(g, sx, sy, grip); p(g, sx, sy+1, blade); p(g, sx, sy+2, edge); }
+      }
     }
   })();
 
-  // Torso
-  (function drawTorso(){
-    for (let y=0; y<6; y++) for (let x=0; x<8; x++) p(g, bodyX+x, bodyTop+y, (y>=2)? outS : outM);
-    for (let x=bodyX; x<bodyX+8; x++) p(g, x, bodyTop+6, belt);
-  })();
-
-  // Arms
-  (function drawArms(){
-    const leftX  = bodyX-1, rightX = bodyX+8;
-    const armTop = bodyTop+1;
-    p(g, leftX, armTop, outM);
-    p(g, rightX, armTop, outM);
-    let ly = armTop + Math.round(armSwingL/2);
-    let ry = armTop + Math.round(armSwingR/2);
-    p(g, leftX, ly+1, skin); p(g, leftX, ly+2, skin);
-    p(g, rightX, ry+1, skin); p(g, rightX, ry+2, skin);
-  })();
-
-  // Legs / boots
-  (function drawLegs(){
+  // legs/boots
+  (function(){
     const legTop = bodyTop+7;
-    const mid = bodyX+3;
+    const mid = 6;
     const lX = mid-2, rX = mid+2;
     const lOffset = Math.round(legSwingL/2);
     const rOffset = Math.round(legSwingR/2);
-    p(g, lX, legTop + lOffset, outS); p(g, lX, legTop+1 + lOffset, outS);
-    p(g, rX, legTop + rOffset, outS); p(g, rX, legTop+1 + rOffset, outS);
-    p(g, lX, legTop+2 + lOffset, boots); p(g, lX, legTop+3 + lOffset, boots);
-    p(g, rX, legTop+2 + rOffset, boots); p(g, rX, legTop+3 + rOffset, boots);
-    if (dir === 1) { p(g, lX-1, legTop+3 + lOffset, boots); }
-    else if (dir === 2) { p(g, rX+1, legTop+3 + rOffset, boots); }
+    const sh = pal.outfitShadow || "#166a2e";
+    const boots = pal.boots || "#4b3928";
+
+    p(g, lX, legTop + lOffset, sh);
+    p(g, lX, legTop+1 + lOffset, sh);
+    p(g, rX, legTop + rOffset, sh);
+    p(g, rX, legTop+1 + rOffset, sh);
+
+    p(g, lX, legTop+2 + lOffset, boots);
+    p(g, lX, legTop+3 + lOffset, boots);
+    p(g, rX, legTop+2 + rOffset, boots);
+    p(g, rX, legTop+3 + rOffset, boots);
+
+    if (dir === 1) p(g, lX-1, legTop+3 + lOffset, boots);
+    else if (dir === 2) p(g, rX+1, legTop+3 + rOffset, boots);
     else { p(g, lX, legTop+4 + lOffset, boots); p(g, rX, legTop+4 + rOffset, boots); }
   })();
 
-  // Directional extra
-  if (dir === 3) p(g, bodyX+3, bodyTop, who==="silvio" ? "#2e6cd0" : "#25a048");
-
-  // Sword (always in-hand for Ana)
-  if (withSword && who==="ana") {
-    drawSwordInHand(g, dir, swingPhaseIndex);
-  }
+  if (dir === 3 && pal.outfitMain) p(g, 6, bodyTop, pal.outfitMain);
 }
 
-function drawSwordInHand(g, dir, swingPhase) {
-  // Simple placement: near right hand (or left if facing left), animate a little during swing.
-  // Coordinates relative to the 16x24 base.
-  // Base handle point positions by dir:
-  let hx, hy, angle = 0;
-  if (dir === 0) { hx = 12; hy = 16; angle = 0.2; }
-  else if (dir === 1) { hx = 2; hy = 16; angle = -1.0; }
-  else if (dir === 2) { hx = 13; hy = 16; angle = 1.0; }
-  else { hx = 11; hy = 12; angle = -0.2; }
-
-  // add swing arc
-  if (swingTimer > 0) {
-    const t = Math.min(1, swingTimer / swingDuration);
-    // swingPhase: 0..3 – move angle over time
-    const swingAngles = [0.6, 0.2, -0.2, -0.6];
-    angle += swingAngles[Math.min(3, Math.floor(t * 4))];
+function drawZombie(g, dir, frameIndex) {
+  g.clearRect(0,0,BASE_W,BASE_H);
+  const walkFrames = [
+    {legL: -1, legR: 1, armL: 1, armR: -1},
+    {legL: 0,  legR: 0, armL: 0, armR: 0},
+    {legL: 1,  legR: -1, armL: -1, armR: 1},
+    {legL: 0,  legR: 0, armL: 0, armR: 0},
+  ];
+  const isIdle = (frameIndex === 0);
+  let armSwingL=0, armSwingR=0, legSwingL=0, legSwingR=0;
+  if (!isIdle) {
+    const w = walkFrames[(frameIndex-1) % 4];
+    armSwingL = w.armL; armSwingR = w.armR;
+    legSwingL = w.legL; legSwingR = w.legR;
   }
 
-  // Draw a tiny sword using rotation around (hx,hy)
-  g.save();
-  g.translate(hx, hy);
-  g.rotate(angle);
-  // hilt
-  p(g, -1, 0, swordHilt); p(g, 0, 0, swordHilt);
-  // blade
-  p(g, 1, -1, swordBlade); p(g, 2, -2, swordBlade); p(g, 3, -3, swordEdge);
-  p(g, 1, -2, swordBlade); p(g, 2, -3, swordEdge);
-  g.restore();
+  const headTop = 4, bodyTop = 13, bodyX = 3;
+
+  // head (sickly green + blood smears)
+  for (let y=0; y<7; y++) for (let x=0; x<8; x++) p(g, 4+x, headTop+y, ZOMBIE.skin);
+  p(g, 5, headTop+3, ZOMBIE.eyes);
+  p(g, 10, headTop+3, ZOMBIE.eyes);
+  p(g, 7, headTop+5, ZOMBIE.teeth);
+  p(g, 8, headTop+5, ZOMBIE.teeth);
+  // blood
+  p(g, 4, headTop+2, ZOMBIE.blood);
+  p(g, 11, headTop+1, ZOMBIE.blood);
+
+  // torso (torn shirt)
+  for (let y=0; y<6; y++) for (let x=0; x<8; x++) p(g, bodyX+x, bodyTop+y, ZOMBIE.shirt);
+  p(g, 6, bodyTop+2, ZOMBIE.blood);
+  p(g, 7, bodyTop+4, ZOMBIE.blood);
+
+  // arms
+  const leftX  = 2, rightX = 12;
+  const armTop = bodyTop+1;
+  const ly = armTop + Math.round(armSwingL/2);
+  const ry = armTop + Math.round(armSwingR/2);
+  p(g, leftX, ly, ZOMBIE.shirt);
+  p(g, rightX, ry, ZOMBIE.shirt);
+  p(g, leftX, ly+1, ZOMBIE.skin);
+  p(g, rightX, ry+1, ZOMBIE.skin);
+
+  // legs
+  const legTop = bodyTop+7;
+  const mid = 6;
+  const lX = mid-2, rX = mid+2;
+  const lOffset = Math.round(legSwingL/2);
+  const rOffset = Math.round(legSwingR/2);
+  for (let y=0; y<2; y++) p(g, lX, legTop+y+lOffset, ZOMBIE.pants), p(g, rX, legTop+y+rOffset, ZOMBIE.pants);
+  p(g, lX, legTop+2+lOffset, ZOMBIE.boots);
+  p(g, rX, legTop+2+rOffset, ZOMBIE.boots);
+}
+
+const anaFrames = [[],[],[],[]];
+const silvioFrames = [[],[],[],[]];
+const zombieFrames = [[],[],[],[]];
+
+for (let dir = 0; dir < 4; dir++) {
+  for (let f = 0; f < 5; f++) {
+    anaFrames[dir][f] = makeFrame((g) => drawHumanoid(g, ANA, dir, f, false, false, true, 0));
+    silvioFrames[dir][f] = makeFrame((g) => drawHumanoid(g, SILVIO, dir, f, true, true, false, 0));
+    zombieFrames[dir][f] = makeFrame((g) => drawZombie(g, dir, f));
+  }
 }
 
 /* =========================
-   Player / NPC / Combat entities
+   Player (Ana)
    ========================= */
 const player = {
   x: 120, y: 120,
   w: DRAW_W, h: DRAW_H,
   speed: 180,
-  dir: 0, frame: 0, animTime: 0, animSpeed: 9,
+  dir: 0,
+  frame: 0,
+  animTime: 0,
+  animSpeed: 9,
   moving: false,
   hearts: 3,
-  invuln: 0, // seconds
-  gold: 0,
+  swordSwinging: false,
+  swordTimer: 0,
+  swordPhase: 0
 };
 
-// Silvio NPC (top-right area, not exact corner)
+/* =========================
+   NPC (Silvio)
+   ========================= */
 const silvio = {
+  name: "Silvio",
   x: 0, y: 0,
-  w: DRAW_W*1.1, h: DRAW_H*1.1,
-  dir: 1, frame: 0,
-  talkable: true
+  w: DRAW_W, h: DRAW_H,
+  dir: 0,
 };
+function placeSilvioTopRight() {
+  silvio.x = Math.floor(W * 0.78);
+  silvio.y = Math.floor(H * 0.18);
+  // keep inside screen
+  if (silvio.x + silvio.w > W-10) silvio.x = W - silvio.w - 10;
+  if (silvio.y + silvio.h > H-10) silvio.y = H - silvio.h - 10;
+}
 
-// Zombies only in snow world
+/* =========================
+   Zombies + Combat
+   ========================= */
 const zombies = [];
-const coins = []; // gold drops
+function spawnZombie() {
+  const edge = randi(0,4);
+  let zx, zy;
+  if (edge === 0) { zx = randi(0, W); zy = -DRAW_H; }
+  else if (edge === 1) { zx = randi(0, W); zy = H + DRAW_H; }
+  else if (edge === 2) { zx = -DRAW_W; zy = randi(0, H); }
+  else { zx = W + DRAW_W; zy = randi(0, H); }
 
-// Axis-aligned rect overlap
+  zombies.push({
+    x: zx, y: zy,
+    w: DRAW_W, h: DRAW_H,
+    speed: 70 + Math.random()*40,
+    dir: 0,
+    frame: 0,
+    animTime: 0,
+    animSpeed: 6,
+    hp: 2
+  });
+}
+function damagePlayer() {
+  if (player.hearts > 0) {
+    player.hearts -= 1;
+    rebuildHearts();
+    if (player.hearts <= 0) {
+      showGameOver();
+    }
+  }
+}
+
+/* =========================
+   Coins + Gold (FIXED: stay where zombie dies)
+   ========================= */
+let gold = 0;
+const coins = [];
+function dropCoin(x, y) {
+  coins.push({x, y, r: 8});
+}
+function updateCoins(dt) {
+  // coins stay where they dropped; only handle pickup
+  if (!coins.length) return;
+  for (let i = coins.length - 1; i >= 0; i--) {
+    const c = coins[i];
+    const dx = (player.x + player.w*0.5) - c.x;
+    const dy = (player.y + player.h*0.8) - c.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 36) {
+      gold += 1;
+      goldEl.innerText = `Gold: ${gold}`;
+      coins.splice(i,1);
+    }
+  }
+}
+
+/* =========================
+   Axis-aligned rect collision helper
+   ========================= */
 function rectsOverlap(a, b) {
   return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h);
 }
-function circleHit(ax, ay, bx, by, r) { const dx=ax-bx, dy=ay-by; return (dx*dx+dy*dy) <= r*r; }
 
 function tryMove(dt, dx, dy) {
   const next = { x: player.x + dx, y: player.y + dy, w: player.w, h: player.h };
   const feet = { x: next.x + player.w*0.25, y: next.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
-  if (feet.x < 0 || feet.y < 0 || feet.x + feet.w > W || feet.y + feet.h > H) return;
+
+  // screen bounds
+  if (feet.x < 0) next.x = player.x; 
+  if (feet.y < 0) next.y = player.y; 
+  if (feet.x + feet.w > W) next.x = player.x; 
+  if (feet.y + feet.h > H) next.y = player.y;
+
+  // solids (trees)
   for (const s of solidRects) {
     if (rectsOverlap(feet, s)) {
       const testX = { x: player.x + dx, y: player.y, w: player.w, h: player.h };
       const feetX = { x: testX.x + player.w*0.25, y: testX.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
       if (!rectsOverlap(feetX, s)) { player.x += dx; return; }
       const testY = { x: player.x, y: player.y + dy, w: player.w, h: player.h };
-      const feetY = { x: testY.x + player.w*0.25, y: testY.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
+      const feetY = { x: testY.x + player.w*0.25, y: testY.y + player.h*0.65, w: player.w*0.5, h: player.w*0.3 };
       if (!rectsOverlap(feetY, s)) { player.y += dy; return; }
       return;
     }
   }
-  player.x = next.x; player.y = next.y;
+
+  player.x = next.x;
+  player.y = next.y;
 }
 
 /* =========================
-   Prompts / dialog / overlays
+   HUD elements
    ========================= */
-const promptEl = document.getElementById('prompt');
-const dialogEl = document.getElementById('dialog');
-const hudEl = document.getElementById('hud');
-const heartsEl = document.getElementById('hearts');
-const goldEl = document.getElementById('gold');
-const gameoverEl = document.getElementById('gameover');
-const restartBtn = document.getElementById('restartBtn');
-
-let running = false;
-let last = 0;
-let dialogActive = false;
-let dialogPhase = 0; // 0 showing text, 1 "press space to continue"
-let dialogTimer = 0;
-
-function showPrompt(text) { promptEl.textContent = text; promptEl.style.display = 'block'; }
-function hidePrompt() { promptEl.style.display = 'none'; }
-function showDialog(text) { dialogEl.textContent = text; dialogEl.style.display = 'block'; }
-function hideDialog() { dialogEl.style.display = 'none'; }
-
-function startDialogSequence() {
-  dialogActive = true;
-  dialogPhase = 0;
-  dialogTimer = 0;
-  showDialog("Silvio: “Will you accept my quest my love?”");
-}
-function updateDialog(dt) {
-  if (!dialogActive) return;
-  dialogTimer += dt;
-  if (dialogPhase === 0 && dialogTimer >= 1.2) {
-    // after a moment, show continue hint
-    dialogPhase = 1;
-    dialogEl.textContent = "Silvio: “Will you accept my quest my love?”  (Press Space to continue)";
-  }
-  // When space pressed and allowed -> close
-  if (dialogPhase === 1 && (keys.has(' ') || keys.has('space'))) {
-    dialogActive = false;
-    hideDialog();
-    questAccepted = true;
-    buildStaticMap(); // show door now in grass world
+const goldEl = document.getElementById("gold");
+const heartsEl = document.getElementById("hearts");
+function rebuildHearts() {
+  heartsEl.innerHTML = "";
+  for (let i=0; i<3; i++) {
+    const d = document.createElement("div");
+    d.className = "heart" + (i < player.hearts ? "" : " empty");
+    heartsEl.appendChild(d);
   }
 }
 
-function setHUD() {
-  hudEl.style.display = 'flex';
-  // hearts
-  const full = "❤", empty = "♡";
-  heartsEl.style.fontSize = "18px";
-  heartsEl.textContent = full.repeat(player.hearts) + empty.repeat(Math.max(0, 3 - player.hearts));
-  goldEl.textContent = "Gold: " + player.gold;
+/* =========================
+   Prompt & Dialog (Silvio)
+   ========================= */
+const promptEl = document.getElementById("prompt");
+const promptBubble = document.getElementById("promptBubble");
+const dialogEl = document.getElementById("dialog");
+const dialogText = document.getElementById("dialogText");
+
+let nearSilvio = false;
+let inDialog = false;
+let dialogFinished = false;
+
+function showPromptAt(x, y, text = "Press E to accept quest") {
+  promptBubble.textContent = text;
+  promptEl.style.display = "block";
+  // position above Silvio
+  promptBubble.style.left = `${x + DRAW_W/2}px`;
+  promptBubble.style.top  = `${y}px`;
 }
-function showGameOver() {
-  gameoverEl.style.display = 'block';
+function hidePrompt() { promptEl.style.display = "none"; }
+
+function showDialog(text) {
+  dialogText.textContent = text;
+  dialogEl.style.display = "block";
+  inDialog = true;
 }
-restartBtn.addEventListener('click', () => {
-  // reset everything
-  player.x = (W - DRAW_W)/2;
-  player.y = (H - DRAW_H)/2;
-  player.hearts = 3; player.gold = 0; player.invuln = 0;
-  questAccepted = true; // keep quest if died in snow so door remains available
-  world = "grass";
-  zombies.length = 0; coins.length = 0;
-  buildStaticMap();
-  gameoverEl.style.display = 'none';
+function hideDialog() {
+  dialogEl.style.display = "none";
+  inDialog = false;
+  dialogFinished = true;
+}
+
+/* =========================
+   Game Over
+   ========================= */
+const gameOverEl = document.getElementById("gameOver");
+const restartBtn = document.getElementById("restartBtn");
+restartBtn.addEventListener("click", () => {
+  location.reload();
 });
-
-/* =========================
-   NPC placement (top-right area)
-   ========================= */
-function placeSilvio() {
-  silvio.x = Math.floor(W - 240);
-  silvio.y = Math.floor(120);
+function showGameOver() {
+  running = false;
+  gameOverEl.style.display = "block";
 }
 
 /* =========================
-   Zombies & coins (snow world)
+   Game loop, movement & combat
    ========================= */
-function spawnZombie() {
-  const z = {
-    x: randi(40, W-40), y: randi(40, H-40),
-    w: DRAW_W, h: DRAW_H,
-    dir: 0, frame: 0, animTime: 0, speed: 80, alive: true, hitTimer: 0,
-    hp: 2
-  };
-  zombies.push(z);
+let last = 0;
+let running = false;
+
+function handleInput(dt) {
+  // Block all movement when dialog is up
+  if (inDialog) return;
+
+  let vx = 0, vy = 0;
+  if (keys.has("arrowleft") || keys.has("a")) vx -= 1;
+  if (keys.has("arrowright")|| keys.has("d")) vx += 1;
+  if (keys.has("arrowup")   || keys.has("w")) vy -= 1;
+  if (keys.has("arrowdown") || keys.has("s")) vy += 1;
+
+  player.moving = (vx !== 0 || vy !== 0);
+  if (player.moving) {
+    const len = Math.hypot(vx, vy) || 1;
+    vx /= len; vy /= len;
+
+    if (Math.abs(vx) > Math.abs(vy)) player.dir = (vx < 0) ? 1 : 2;
+    else if (Math.abs(vy) > 0)       player.dir = (vy < 0) ? 3 : 0;
+
+    const dx = vx * player.speed * dt;
+    const dy = vy * player.speed * dt;
+    tryMove(dt, dx, dy);
+  }
+
+  // Sword swing (space) — always in hand, animated phases
+  if (!inDialog && (keys.has(" "))) {
+    if (!player.swordSwinging) {
+      player.swordSwinging = true;
+      player.swordTimer = 0;
+      player.swordPhase = 0;
+    }
+  }
+}
+
+function updatePlayerAnim(dt) {
+  if (player.moving) {
+    player.animTime += dt * player.animSpeed;
+    const step = Math.floor(player.animTime) % 4;
+    player.frame = 1 + step;
+  } else {
+    player.animTime = 0;
+    player.frame = 0;
+  }
+
+  if (player.swordSwinging) {
+    player.swordTimer += dt;
+    // 4 phases across ~0.25s
+    if      (player.swordTimer < 0.06) player.swordPhase = 0;
+    else if (player.swordTimer < 0.12) player.swordPhase = 1;
+    else if (player.swordTimer < 0.18) player.swordPhase = 2;
+    else if (player.swordTimer < 0.24) player.swordPhase = 3;
+    else { player.swordSwinging = false; player.swordTimer = 0; player.swordPhase = 0; }
+  }
+}
+
+function attackHitbox() {
+  // small hitbox in front of Ana based on direction
+  const range = 28;
+  let hx = player.x + player.w/2 - 12;
+  let hy = player.y + player.h/2 - 12;
+  if (player.dir === 0) hy += range;
+  if (player.dir === 3) hy -= range;
+  if (player.dir === 1) hx -= range;
+  if (player.dir === 2) hx += range;
+  return { x: hx, y: hy, w: 24, h: 24 };
 }
 
 function updateZombies(dt) {
-  // Spawn logic
-  if (world === "snow" && zombies.length < 6) {
-    if (Math.random() < 0.02) spawnZombie();
-  }
-  for (const z of zombies) {
-    if (!z.alive) continue;
-    // chase
-    const dx = (player.x - z.x), dy = (player.y - z.y);
-    const d = Math.hypot(dx, dy) || 1;
-    const vx = dx / d, vy = dy / d;
-    z.x += vx * z.speed * dt;
-    z.y += vy * z.speed * dt;
+  // Spawn occasionally
+  if (Math.random() < 0.02 && zombies.length < 12) spawnZombie();
 
-    // dir
-    if (Math.abs(vx) > Math.abs(vy)) z.dir = (vx < 0)? 1 : 2;
-    else z.dir = (vy < 0)? 3 : 0;
+  const hit = attackHitbox();
+  for (let i = zombies.length - 1; i >= 0; i--) {
+    const z = zombies[i];
+    // move toward player
+    const cx = (player.x + player.w/2) - (z.x + z.w/2);
+    const cy = (player.y + player.h/2) - (z.y + z.h/2);
+    const len = Math.hypot(cx, cy) || 1;
+    const vx = (cx / len) * z.speed * dt;
+    const vy = (cy / len) * z.speed * dt;
+    z.x += vx; z.y += vy;
+    // choose facing
+    if (Math.abs(cx) > Math.abs(cy)) z.dir = (cx < 0) ? 1 : 2;
+    else z.dir = (cy < 0) ? 3 : 0;
 
     // anim
-    z.animTime += dt * 7;
+    z.animTime += dt * z.animSpeed;
     z.frame = 1 + (Math.floor(z.animTime) % 4);
 
-    // collide with player -> damage
-    if (player.invuln <= 0) {
-      const feetP = { x: player.x + player.w*0.25, y: player.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
-      const zBox = { x: z.x + z.w*0.25, y: z.y + z.h*0.65, w: z.w*0.5, h: z.h*0.3 };
-      if (rectsOverlap(feetP, zBox)) {
-        player.hearts -= 1;
-        player.invuln = 1.0;
-        // knockback
-        player.x -= vx * 30; player.y -= vy * 30;
-        if (player.hearts <= 0) {
-          running = false;
-          showGameOver();
+    // collide with player (damage)
+    const zfeet = { x: z.x + z.w*0.25, y: z.y + z.h*0.7, w: z.w*0.5, h: z.h*0.3 };
+    const pfeet = { x: player.x + player.w*0.25, y: player.y + player.h*0.7, w: player.w*0.5, h: player.h*0.3 };
+    if (rectsOverlap(zfeet, pfeet)) damagePlayer();
+
+    // sword hit detection
+    if (player.swordSwinging) {
+      const zh = { x: z.x, y: z.y, w: z.w, h: z.h };
+      if (rectsOverlap(hit, zh)) {
+        z.hp -= 1;
+        if (z.hp <= 0) {
+          // Drop coin exactly where zombie dies (no fall)
+          const zx = z.x + z.w/2;
+          const zy = z.y + z.h*0.85;
+          dropCoin(zx, zy);
+          zombies.splice(i,1);
+          continue;
         }
       }
     }
   }
 }
 
-function renderZombies() {
-  for (const z of zombies) {
-    if (!z.alive) continue;
-    // reuse silvio/ana frame style for zombie look (tinted)
-    const img = anaFrames[z.dir][z.frame];
-    ctx.save();
-    ctx.globalAlpha = 0.95;
-    ctx.filter = "grayscale(80%)";
-    ctx.drawImage(img, 0,0, BASE_W, BASE_H, Math.round(z.x), Math.round(z.y), DRAW_W, DRAW_H);
-    ctx.restore();
-  }
-}
+function updateSilvio(dt) {
+  // Check proximity for prompt
+  const px = player.x + player.w/2;
+  const py = player.y + player.h*0.8;
+  const sx = silvio.x + silvio.w/2;
+  const sy = silvio.y + silvio.h*0.8;
+  const dist = Math.hypot(px - sx, py - sy);
 
-function dropCoin(x, y) {
-  coins.push({x, y, r: 8, vx: rand(-20,20), vy: -60, life: 0});
-}
-function updateCoins(dt) {
-  for (const c of coins) {
-    c.life += dt;
-    // simple gravity
-    c.vy += 200*dt;
-    c.x += c.vx*dt;
-    c.y += c.vy*dt;
-    if (c.y > H-20) { c.y = H-20; c.vy = 0; c.vx *= 0.9; }
-    // pickup
-    if (circleHit(c.x, c.y, player.x+DRAW_W/2, player.y+DRAW_H*0.8, 24)) {
-      player.gold += 1;
-      coins.splice(coins.indexOf(c),1);
-      break;
-    }
-  }
-}
-function renderCoins() {
-  for (const c of coins) {
-    ctx.fillStyle = "#ffd43b";
-    ctx.beginPath(); ctx.arc(c.x, c.y, 6, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = "#fff3a0";
-    ctx.fillRect(c.x-2, c.y-3, 4, 2);
-  }
-}
-
-/* =========================
-   Sword hit detection
-   ========================= */
-function swordActive() {
-  return swingTimer > 0 && (swingTimer / swingDuration) >= 0.15; // activate after a small delay
-}
-function hitZombiesWithSword() {
-  if (!swordActive()) return;
-  // arc center near player's hand depending on dir
-  let cx = player.x + DRAW_W/2, cy = player.y + DRAW_H*0.75;
-  let nx=0, ny=0; // forward vector
-  if (player.dir===0){ ny=1; } else if (player.dir===1){ nx=-1; } else if (player.dir===2){ nx=1; } else { ny=-1; }
-  cx += nx*30; cy += ny*30;
-  const r = 38; // hit radius
-  for (const z of zombies) {
-    if (!z.alive) continue;
-    const zx = z.x + DRAW_W/2, zy = z.y + DRAW_H*0.75;
-    if (circleHit(cx, cy, zx, zy, r)) {
-      z.hp -= 1;
-      if (z.hp <= 0) {
-        z.alive = false;
-        dropCoin(zx, zy-10);
+  if (!dialogFinished) {
+    if (dist < 140) {
+      nearSilvio = true;
+      showPromptAt(silvio.x + silvio.w/2, silvio.y, "Press E to accept quest");
+      // Accept quest -> show dialog, freeze player
+      if (keys.has("e")) {
+        hidePrompt();
+        showDialog("Will you accept my quest my love?");
       }
+    } else {
+      nearSilvio = false;
+      hidePrompt();
     }
-  }
-}
-
-/* =========================
-   Game loop
-   ========================= */
-function update(dt) {
-  // dialog lock
-  if (dialogActive) { updateDialog(dt); return; }
-
-  // movement
-  let vx = 0, vy = 0;
-  if (keys.has("arrowleft") || keys.has("a")) { vx -= 1; lastPressedDir = 'left'; }
-  if (keys.has("arrowright")|| keys.has("d")) { vx += 1; lastPressedDir = 'right'; }
-  if (keys.has("arrowup")   || keys.has("w")) { vy -= 1; lastPressedDir = 'up'; }
-  if (keys.has("arrowdown") || keys.has("s")) { vy += 1; lastPressedDir = 'down'; }
-
-  player.moving = (vx !== 0 || vy !== 0);
-  if (player.moving) {
-    const len = Math.hypot(vx, vy) || 1; vx/=len; vy/=len;
-    if (Math.abs(vx) > Math.abs(vy)) player.dir = (vx < 0) ? 1 : 2;
-    else if (Math.abs(vy) > 0) player.dir = (vy < 0) ? 3 : 0;
-    tryMove(dt, vx * player.speed * dt, vy * player.speed * dt);
-  }
-
-  // animation
-  if (player.moving) {
-    player.animTime += dt * player.animSpeed;
-    const step = Math.floor(player.animTime) % 4; player.frame = 1 + step;
-  } else { player.animTime = 0; player.frame = 0; }
-
-  // sword swing input (space)
-  if ((keys.has(' ') || keys.has('space')) && performance.now()/1000 >= canSwingAt) {
-    swingTimer = 0.0001; // start
-    canSwingAt = performance.now()/1000 + swingCooldown;
-  }
-  if (swingTimer > 0) {
-    swingTimer += dt;
-    hitZombiesWithSword();
-    if (swingTimer >= swingDuration) swingTimer = 0;
-  }
-
-  // prompt near Silvio (only in grass, before accepted)
-  if (world === "grass" && !questAccepted) {
-    const px = player.x + DRAW_W/2, py = player.y + DRAW_H*0.8;
-    const sx = silvio.x + DRAW_W*0.55, sy = silvio.y + DRAW_H*0.8;
-    const near = Math.hypot(px - sx, py - sy) < 120;
-    if (near) {
-      showPrompt("Press E to accept quest");
-      if (keys.has('e')) { hidePrompt(); startDialogSequence(); }
-    } else hidePrompt();
   } else {
     hidePrompt();
   }
+}
 
-  // Door interaction (to snow world)
-  if (world === "grass" && questAccepted && door.visible) {
-    const feet = { x: player.x + player.w*0.25, y: player.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
-    if (rectsOverlap(feet, {x: door.x, y: door.y, w: door.w, h: door.h}) && keys.has('e')) {
-      world = "snow";
-      zombies.length = 0; coins.length = 0;
-      buildStaticMap();
-      // place player near bottom-left on entry
-      player.x = 80; player.y = H - DRAW_H - 80;
-    }
+function updatePortal(dt) {
+  // teleport if player overlaps portal (after dialog finished)
+  if (!dialogFinished) return;
+  const feet = { x: player.x + player.w*0.25, y: player.y + player.h*0.7, w: player.w*0.5, h: player.h*0.3 };
+  const door = { x: portalDoor.x, y: portalDoor.y, w: portalDoor.w, h: portalDoor.h };
+  if (rectsOverlap(feet, door)) {
+    // Example teleport: move Ana to center
+    player.x = (W - player.w)/2;
+    player.y = (H - player.h)/2;
+  }
+}
+
+function update(dt) {
+  // Dialog progression (cannot move until space to continue)
+  if (inDialog) {
+    // waiting for space to finish
+    if (keys.has(" ")) hideDialog();
+    return;
   }
 
-  // snow world updates
-  if (world === "snow") {
-    updateZombies(dt);
-    updateCoins(dt);
-  }
-
-  // i-frames
-  if (player.invuln > 0) player.invuln -= dt;
-
-  // HUD
-  setHUD();
+  handleInput(dt);
+  updatePlayerAnim(dt);
+  updateSilvio(dt);
+  updateZombies(dt);
+  updateCoins(dt);
+  updatePortal(dt);
 }
 
 function render() {
-  // draw map
   ctx.drawImage(mapBuffer, 0, 0);
 
-  // draw door (already baked into map look — but keep highlight)
-  if (world === "grass" && door.visible) {
-    drawDoor(ctx, door.x, door.y, door.w, door.h);
+  // Silvio
+  const sImg = silvioFrames[silvio.dir][0];
+  ctx.drawImage(sImg, 0,0, BASE_W, BASE_H, Math.round(silvio.x), Math.round(silvio.y), DRAW_W, DRAW_H);
+
+  // Player (Ana) with sword animation
+  const aImg = makeFrame(g => drawHumanoid(g, ANA, player.dir, player.frame, false, false, true, player.swordPhase));
+  ctx.drawImage(aImg, 0,0, BASE_W, BASE_H, Math.round(player.x), Math.round(player.y), DRAW_W, DRAW_H);
+
+  // Zombies
+  for (const z of zombies) {
+    const img = zombieFrames[z.dir][z.frame];
+    ctx.drawImage(img, 0,0, BASE_W, BASE_H, Math.round(z.x), Math.round(z.y), DRAW_W, DRAW_H);
   }
 
-  // draw Silvio with floating '?'
-  if (world === "grass") {
-    const imgS = silvioFrames[silvio.dir][silvio.frame];
+  // Coins (simple circles)
+  for (const c of coins) {
     ctx.save();
-    ctx.imageSmoothingEnabled = false;
-    // make Silvio a tad larger
-    const sw = Math.floor(DRAW_W*1.1), sh = Math.floor(DRAW_H*1.1);
-    ctx.drawImage(imgS, 0,0, BASE_W, BASE_H, Math.round(silvio.x), Math.round(silvio.y), sw, sh);
-    // name + question mark
-    ctx.fillStyle = "#fff"; ctx.font = "16px monospace"; ctx.textAlign = "center";
-    ctx.fillText("Silvio", Math.round(silvio.x + sw/2), Math.round(silvio.y - 10));
-    ctx.fillText("?", Math.round(silvio.x + sw/2), Math.round(silvio.y - 26));
+    ctx.fillStyle = "#f0d24a";
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
     ctx.restore();
   }
-
-  // zombies & coins (snow)
-  if (world === "snow") {
-    renderZombies();
-    renderCoins();
-  }
-
-  // draw player (with sword always in-hand & swing frames)
-  const img = anaFrames[player.dir][player.frame];
-  ctx.save();
-  ctx.imageSmoothingEnabled = false;
-
-  // flash during invuln
-  if (player.invuln > 0 && Math.floor(performance.now()/100) % 2 === 0) {
-    ctx.globalAlpha = 0.5;
-  }
-
-  // To visualize sword swing more, redraw a sword overlay using current swing phase
-  // We re-render the character base first
-  ctx.drawImage(img, 0,0, BASE_W, BASE_H, Math.round(player.x), Math.round(player.y), DRAW_W, DRAW_H);
-
-  // then draw an extra sword sprite (slightly larger) to emphasize motion
-  if (swingTimer > 0) {
-    const phase = Math.min(3, Math.floor((swingTimer / swingDuration) * 4));
-    // small effect: line/arc in front
-    ctx.strokeStyle = "rgba(255,255,255,0.5)";
-    ctx.lineWidth = 2;
-    const cx = player.x + DRAW_W/2;
-    const cy = player.y + DRAW_H*0.75;
-    ctx.beginPath();
-    if (player.dir===0) { ctx.arc(cx, cy, 30, Math.PI*0.1, Math.PI*0.9); }
-    if (player.dir===1) { ctx.arc(cx, cy, 30, Math.PI*1.1, Math.PI*1.9); }
-    if (player.dir===2) { ctx.arc(cx, cy, 30, Math.PI*1.9, Math.PI*0.1, true); }
-    if (player.dir===3) { ctx.arc(cx, cy, 30, -Math.PI*0.9, -Math.PI*0.1); }
-    ctx.stroke();
-  }
-
-  // name above player
-  ctx.fillStyle = "#fff"; ctx.font = "18px monospace"; ctx.textAlign = "center";
-  ctx.fillText("Ana", Math.round(player.x + DRAW_W/2), Math.round(player.y - 10));
-
-  ctx.restore();
 }
 
 function loop(ts) {
@@ -901,21 +1038,21 @@ document.getElementById("startBtn").addEventListener("click", () => {
   startOverlay.style.display = "none";
   running = true;
   last = performance.now();
+  resize();
+  placeSilvioTopRight();
+  rebuildHearts();
+  goldEl.innerText = `Gold: ${gold}`;
   requestAnimationFrame(loop);
-  hudEl.style.display = 'flex';
 });
 
 /* =========================
    Init
    ========================= */
 resize();
-placeSilvio();
+placeSilvioTopRight();
 player.x = (W - DRAW_W)/2;
 player.y = (H - DRAW_H)/2;
-buildStaticMap();
-setHUD();
 
 </script>
 </body>
 </html>
-
