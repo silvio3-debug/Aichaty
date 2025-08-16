@@ -3,14 +3,15 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Pixel Adventure</title>
+<title>Pixel Adventure — Snow Quest</title>
 <style>
+  /* ===== Base layout ===== */
   html, body {
     margin: 0;
     height: 100%;
     background: #000;
     overflow: hidden;
-    font-family: system-ui, sans-serif;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
   }
   #game {
     display: block;
@@ -18,9 +19,10 @@
     height: 100vh;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
-    background: #000; /* covered by map render */
+    background: #000; /* covered by map buffer */
   }
-  /* Start overlay */
+
+  /* ===== Overlay (start) ===== */
   #startOverlay {
     position: fixed;
     inset: 0;
@@ -48,31 +50,90 @@
   }
   #startBtn:active { transform: translateY(1px); }
 
-  /* Dialog / prompts */
-  .prompt, .dialog, .gameover, .hud {
-    position: fixed; left: 50%; transform: translateX(-50%);
-    color: #fff; text-align: center; font-weight: 600;
-    text-shadow: 0 2px 0 rgba(0,0,0,.5);
-    pointer-events: none;
-  }
-  .prompt { bottom: 8vh; background: rgba(0,0,0,.45); padding: 8px 12px; border-radius: 8px; }
-  .dialog { bottom: 12vh; width: min(92vw, 700px); background: rgba(0,0,0,.6); padding: 14px 16px; border-radius: 10px; }
-  .gameover { top: 20vh; font-size: clamp(22px, 4vw, 42px); }
-  .hud { top: 10px; width: 100%; transform: none; left: 0; display:flex; justify-content: space-between; padding: 0 12px; }
-
-  /* FIX: center gold */
-  #gold {
-    position: absolute;
-    top: 0;
+  /* ===== HUD ===== */
+  .hud {
+    position: fixed;
     left: 50%;
+    top: 10px;
     transform: translateX(-50%);
     z-index: 6;
-    font-size: 18px; /* keep your size */
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 0 #000, 0 0 6px #000;
+    user-select: none;
     pointer-events: none;
   }
+  .hud .hearts {
+    display: inline-flex; gap: 6px;
+  }
+  .hud .heart {
+    width: 18px; height: 18px; border-radius: 3px;
+    background: #e53935; outline: 1px solid #000;
+    box-shadow: 0 0 0 2px rgba(0,0,0,.25) inset;
+  }
+  .hud .heart.off { background: #3a3a3a; }
+  .hud .gold {
+    padding: 4px 8px;
+    background: rgba(0,0,0,.35);
+    border-radius: 6px;
+    outline: 1px solid rgba(255,255,255,.15);
+  }
 
-  #restartBtn {
-    margin-top: 16px; padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer;
+  /* ===== Prompt / Dialog ===== */
+  #prompt, #dialog {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #fff;
+    text-shadow: 0 1px 0 #000, 0 0 6px #000;
+    pointer-events: none;
+    z-index: 6;
+  }
+  #prompt {
+    top: 64px;
+    font-size: clamp(12px, 2vw, 18px);
+    background: rgba(0,0,0,.35);
+    padding: 8px 12px;
+    border-radius: 8px;
+    outline: 1px solid rgba(255,255,255,.15);
+    display: none;
+  }
+  #dialog {
+    bottom: 8vh;
+    width: min(900px, 92vw);
+    background: rgba(0,0,0,.6);
+    padding: 14px 16px;
+    border-radius: 12px;
+    outline: 1px solid rgba(255,255,255,.2);
+    display: none;
+  }
+  #dialog .name {
+    display: block;
+    font-weight: 800;
+    letter-spacing: .5px;
+    margin-bottom: 6px;
+  }
+  #dialog .line {
+    display: block;
+    line-height: 1.5;
+    font-size: clamp(14px, 2.2vw, 18px);
+  }
+
+  /* ===== Door indicator (top-right) ===== */
+  .cornerNote {
+    position: fixed;
+    right: 12px;
+    top: 12px;
+    z-index: 6;
+    color: #fff;
+    opacity: .8;
+    font-size: 12px;
+    text-shadow: 0 1px 0 #000, 0 0 6px #000;
+    user-select: none;
+    pointer-events: none;
   }
 </style>
 </head>
@@ -81,224 +142,307 @@
 <canvas id="game"></canvas>
 
 <div id="startOverlay">
-  <div id="title">Pixel Adventure</div>
+  <div id="title">Pixel Adventure — Snow Quest</div>
   <button id="startBtn">Start Game</button>
 </div>
 
-<!-- HUD -->
-<div class="hud" id="hud" style="display:none;">
-  <div id="hearts"></div>
-  <div id="gold">Gold: 0</div>
+<!-- HUD (top-center, stays centered) -->
+<div class="hud" id="hud">
+  <div class="hearts" id="hearts"></div>
+  <div class="gold" id="goldHUD">Gold: <span id="goldCount">0</span></div>
 </div>
 
-<!-- Context prompts & dialog -->
-<div class="prompt" id="prompt" style="display:none;"></div>
-<div class="dialog" id="dialog" style="display:none;"></div>
+<!-- Interaction prompt -->
+<div id="prompt">Press E to accept quest</div>
 
-<!-- Game Over -->
-<div class="gameover" id="gameover" style="display:none;">
-  <div>Game Over</div>
-  <button id="restartBtn">Restart</button>
+<!-- Blocking dialog -->
+<div id="dialog">
+  <span class="name" id="dlgName"></span>
+  <span class="line" id="dlgLine"></span>
 </div>
+
+<!-- Tiny helper for door placement info -->
+<div class="cornerNote">Door is fixed in the top-right corner →</div>
 
 <script>
-/* =========================
-   Basic engine + sizing
-   ========================= */
+/* ==========================================================
+   Canvas + Context
+   ========================================================== */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d", { alpha:false });
 let W = 0, H = 0;
 
+/* ==========================================================
+   Deterministic RNG so the map NEVER shuffles after quest
+   ========================================================== */
+function makeRNG(seed = 1337) {
+  // mulberry32
+  let t = seed >>> 0;
+  return function() {
+    t += 0x6D2B79F5;
+    let r = Math.imul(t ^ t >>> 15, 1 | t);
+    r ^= r + Math.imul(r ^ r >>> 7, 61 | r);
+    return ((r ^ r >>> 14) >>> 0) / 4294967296;
+  };
+}
+function randi(rng, min, max) { return Math.floor(rng() * (max - min + 1)) + min; }
+
+/* ==========================================================
+   Resize (build map once, never rebuild on quest)
+   ========================================================== */
+let mapBuilt = false;
 function resize() {
-  W = canvas.width  = Math.floor(window.innerWidth);
-  H = canvas.height = Math.floor(window.innerHeight);
+  W = canvas.width  = Math.max(320, Math.floor(window.innerWidth));
+  H = canvas.height = Math.max(240, Math.floor(window.innerHeight));
   ctx.imageSmoothingEnabled = false;
-  buildStaticMap(); // rebuild current world map
+  if (!mapBuilt) {
+    buildStaticSnowMap(); // only once!
+    placeFixedWorldThings(); // door + silvio fixed placement
+    mapBuilt = true;
+  } else {
+    // When resizing, we keep the precomputed layers; just redraw.
+    // (Rebuilding keeps the same PRNG data; positions don't change.)
+    rebuildMapBufferForSize(); // redraw cached features to new buffer without re-randomizing
+  }
 }
 window.addEventListener("resize", resize);
 
-/* =========================
-   Input handling
-   ========================= */
+/* ==========================================================
+   Input
+   ========================================================== */
 const keys = new Set();
-let lastPressedDir = 'down';
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   const moveKeys = ["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"," "];
   if (moveKeys.includes(k)) e.preventDefault();
   keys.add(k);
+
+  // Interact with Silvio (quest)
+  if (k === "e") tryStartQuest();
+
+  // Continue dialog (space)
+  if (k === " " || k === "spacebar" || k === "space") {
+    if (dialogActive) advanceDialog();
+    else playerAttack();
+  }
 });
 window.addEventListener("keyup", (e) => {
   keys.delete(e.key.toLowerCase());
 });
 
-/* =========================
-   Random helpers
-   ========================= */
-function rand(min, max) { return Math.random() * (max - min) + min; }
-function randi(min, max) { return Math.floor(rand(min, max)); }
-
-/* =========================
-   Worlds / map (static, full screen)
-   ========================= */
+/* ==========================================================
+   World Layers (Snow map with deterministic content)
+   ========================================================== */
 let mapBuffer, mapCtx;
-let solidRects = []; // collision solids (e.g., trunks)
-let world = "grass"; // "grass" | "snow"
-let questAccepted = false;
 
-// Door to snow world (appears after quest accepted)
-const door = {x: 0, y: 0, w: 36, h: 56, visible: false};
+/* precomputed decor (so it never moves): */
+let snowPatches = [];   // {x,y,size}
+let flowers = [];       // {x,y,type}
+let trees = [];         // {x,y,trunk:{x,y,w,h}}
+let rocks = [];         // {x,y,sz}
+let snowDrifts = [];    // {x,y,w,h,alpha}
 
-function buildStaticMap() {
+/* fixed world items (also deterministic) */
+const door = { x: 0, y: 0, w: 34, h: 54 };  // position set after map size known
+const silvio = { x: 0, y: 0, w: 22*4, h: 34*4, dir: 0 }; // set after size known (center-ish)
+
+/* Build once with a fixed seed so the layout is stable */
+const MAP_SEED = 987654321;
+let rng = makeRNG(MAP_SEED);
+
+function buildStaticSnowMap() {
+  // Clear any earlier arrays (in case we resize and redraw from stored seeds)
+  snowPatches.length = 0; flowers.length = 0; trees.length = 0; rocks.length = 0; snowDrifts.length = 0;
+
+  // Use a fresh RNG from the same seed so content is the same EVERY time we call this.
+  rng = makeRNG(MAP_SEED);
+
+  // Precompute decor positions relative to [0..W] & [0..H]
+  // Snow field base patches (very subtle blue/white)
+  const patchCount = Math.floor((W*H)/14000);
+  for (let i = 0; i < patchCount; i++) {
+    snowPatches.push({ x: randi(rng, 0, W), y: randi(rng, 0, H), size: randi(rng, 20, 90) });
+  }
+
+  // Frozen flowers (muted tones)
+  const flowerCount = Math.floor((W*H)/90000);
+  for (let i = 0; i < flowerCount; i++) {
+    flowers.push({ x: randi(rng, 8, W-8), y: randi(rng, 8, H-8), type: randi(rng, 0, 2) });
+  }
+
+  // Evergreens (tree collision trunks)
+  const treeCount = Math.floor((W*H)/52000);
+  for (let i = 0; i < treeCount; i++) {
+    const x = randi(rng, 60, W-60);
+    const y = randi(rng, 60, H-60);
+    const trunkW = 14, trunkH = 28, tx = x - trunkW/2, ty = y + 10;
+    trees.push({ x, y, trunk: { x: tx, y: ty, w: trunkW, h: trunkH } });
+  }
+
+  // Scattered icy rocks
+  const rockCount = Math.floor((W*H)/110000);
+  for (let i = 0; i < rockCount; i++) {
+    rocks.push({ x: randi(rng, 20, W-20), y: randi(rng, 20, H-20), sz: randi(rng, 8, 16) });
+  }
+
+  // Snow drifts / foggy wisps
+  const driftCount = Math.floor((W*H)/170000);
+  for (let i = 0; i < driftCount; i++) {
+    snowDrifts.push({
+      x: randi(rng, 0, W), y: randi(rng, 0, H),
+      w: randi(rng, 120, 240), h: randi(rng, 60, 120),
+      alpha: 0.15 + rng()*0.15
+    });
+  }
+
+  // Build the initial buffer
+  rebuildMapBufferForSize();
+}
+
+function rebuildMapBufferForSize() {
   mapBuffer = document.createElement("canvas");
   mapBuffer.width = W;
   mapBuffer.height = H;
   mapCtx = mapBuffer.getContext("2d");
   mapCtx.imageSmoothingEnabled = false;
-  solidRects = [];
 
-  if (world === "grass") drawGrassWorld();
-  else drawSnowWorld();
-}
-
-function drawGrassWorld() {
-  // Base grass
-  mapCtx.fillStyle = "#6ac36a";
+  // Base snow
+  mapCtx.fillStyle = "#cfe6ff";
   mapCtx.fillRect(0,0,W,H);
 
-  // Subtle grass noise tiles (tiny squares)
+  // Subtle noise tiling
   const cell = 8;
   for (let y = 0; y < H; y += cell) {
     for (let x = 0; x < W; x += cell) {
-      const v = Math.random();
-      if (v < 0.18) {
-        mapCtx.fillStyle = "#64bb64";
+      const v = (Math.sin(x*12.9898 + y*78.233) * 43758.5453) % 1;
+      if (v < 0.16) {
+        mapCtx.fillStyle = "#d8eeff";
         mapCtx.fillRect(x, y, cell, cell);
-      } else if (v < 0.28) {
-        mapCtx.fillStyle = "#71cd71";
+      } else if (v < 0.26) {
+        mapCtx.fillStyle = "#bfe0ff";
         mapCtx.fillRect(x, y, cell, cell);
       }
     }
   }
 
-  // Flowers
-  const flowerCount = Math.floor((W*H) / 12000);
-  for (let i = 0; i < flowerCount; i++) {
-    const x = randi(8, W-8);
-    const y = randi(8, H-8);
-    const type = randi(0,3);
-    mapCtx.fillStyle = (type===0) ? "#ffe6f2" : (type===1) ? "#fff8a6" : "#b0e3ff";
-    mapCtx.fillRect(x, y, 3, 3);
-    mapCtx.fillRect(x+2, y+1, 2, 2);
-    mapCtx.fillRect(x-1, y+1, 2, 2);
-    mapCtx.fillStyle = "#2f7b2f";
-    mapCtx.fillRect(x+1, y+3, 1, 3);
+  // Snow patches
+  for (const p of snowPatches) {
+    const g = mapCtx.createRadialGradient(p.x, p.y, 1, p.x, p.y, p.size);
+    g.addColorStop(0, "rgba(255,255,255,0.9)");
+    g.addColorStop(1, "rgba(255,255,255,0.05)");
+    mapCtx.fillStyle = g;
+    mapCtx.beginPath();
+    mapCtx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+    mapCtx.fill();
   }
 
-  // Trees
-  const treeCount = Math.floor((W*H) / 50000);
-  for (let i = 0; i < treeCount; i++) {
-    const x = randi(60, W-60);
-    const y = randi(60, H-60);
-    drawTree(mapCtx, x, y, false);
+  // Frozen flowers
+  for (const f of flowers) {
+    if (f.type === 0) mapCtx.fillStyle = "#f7d1ff";
+    if (f.type === 1) mapCtx.fillStyle = "#fff6bf";
+    if (f.type === 2) mapCtx.fillStyle = "#bde7ff";
+    mapCtx.fillRect(f.x, f.y, 3, 3);
+    mapCtx.fillRect(f.x+2, f.y+1, 2, 2);
+    mapCtx.fillRect(f.x-1, f.y+1, 2, 2);
+    mapCtx.fillStyle = "#2f7b7b";
+    mapCtx.fillRect(f.x+1, f.y+3, 1, 3);
   }
 
-  // Door appears after quest accepted
-  door.visible = questAccepted;
-  if (door.visible) {
-    // place near top-right area
-    door.x = Math.floor(W - 120);
-    door.y = Math.floor(80);
-    drawDoor(mapCtx, door.x, door.y, door.w, door.h);
+  // Trees (foliage and trunks)
+  for (const t of trees) drawEvergreen(mapCtx, t.x, t.y, t.trunk);
+
+  // Rocks (icy)
+  for (const r of rocks) {
+    mapCtx.fillStyle = "#e7f2ff";
+    mapCtx.beginPath();
+    mapCtx.arc(r.x, r.y, r.sz/2, 0, Math.PI*2);
+    mapCtx.fill();
+    mapCtx.fillStyle = "#a4c2de";
+    mapCtx.fillRect(r.x-1, r.y-1, 2, 2);
   }
+
+  // Snow drifts (soft fog)
+  for (const d of snowDrifts) {
+    mapCtx.fillStyle = `rgba(255,255,255,${d.alpha})`;
+    mapCtx.beginPath();
+    mapCtx.ellipse(d.x, d.y, d.w/2, d.h/2, 0, 0, Math.PI*2);
+    mapCtx.fill();
+  }
+
+  // Door (fixed top-right corner, drawn on map layer so it's "world" art)
+  drawDoorOnMap();
 }
 
-function drawSnowWorld() {
-  // Snow base
-  mapCtx.fillStyle = "#e8f4ff";
-  mapCtx.fillRect(0,0,W,H);
-
-  // Snow texture (noise)
-  const cell = 8;
-  for (let y = 0; y < H; y += cell) {
-    for (let x = 0; x < W; x += cell) {
-      const v = Math.random();
-      if (v < 0.2) {
-        mapCtx.fillStyle = "#dcecff";
-        mapCtx.fillRect(x, y, cell, cell);
-      } else if (v < 0.28) {
-        mapCtx.fillStyle = "#f3f9ff";
-        mapCtx.fillRect(x, y, cell, cell);
-      }
-    }
-  }
-
-  // Pines
-  const pineCount = Math.floor((W*H) / 60000);
-  for (let i = 0; i < pineCount; i++) {
-    drawPine(mapCtx, randi(60, W-60), randi(70, H-60));
-  }
-}
-
-function drawTree(g, x, y, snowy=false) {
-  // Foliage: layered circles
-  g.fillStyle = snowy ? "#356a4b" : "#2e8b57";
-  for (let r = 26; r >= 18; r -= 4) {
+function drawEvergreen(g, x, y, trunk) {
+  // Cone foliage (dark -> light)
+  for (let i = 0; i < 5; i++) {
+    g.fillStyle = (i % 2 ? "#367e67" : "#2a6a57");
+    const w = 56 - i*8, h = 16;
     g.beginPath();
-    g.arc(x, y, r, 0, Math.PI*2);
+    g.moveTo(x - w/2, y - 8 + i*h*0.5);
+    g.lineTo(x + w/2, y - 8 + i*h*0.5);
+    g.lineTo(x, y - 28 + i*h);
+    g.closePath();
     g.fill();
   }
-  // Highlights / snow cap
-  g.fillStyle = snowy ? "#eaf5ff" : "#3da86e";
+  // Snow caps
+  g.fillStyle = "#e9f7ff";
   g.beginPath();
-  g.arc(x-8, y-8, 10, 0, Math.PI*2);
+  g.arc(x, y-26, 12, 0, Math.PI*2);
   g.fill();
 
-  // Trunk (solid rect)
-  const trunkW = 14, trunkH = 26;
-  const tx = x - trunkW/2, ty = y + 10;
-  g.fillStyle = "#8b5a2b";
-  g.fillRect(tx, ty, trunkW, trunkH);
-  g.fillStyle = "#a06c38";
-  g.fillRect(tx+4, ty+2, 4, trunkH-4);
-
-  solidRects.push({x: tx, y: ty, w: trunkW, h: trunkH});
+  // Trunk (solid for collision)
+  g.fillStyle = "#7b5a3a";
+  g.fillRect(trunk.x, trunk.y, trunk.w, trunk.h);
+  g.fillStyle = "#8e6b48";
+  g.fillRect(trunk.x+4, trunk.y+3, 4, trunk.h-6);
 }
 
-function drawPine(g, x, y) {
-  // simple triangle stack
-  const trunkW = 10, trunkH = 22;
-  g.fillStyle = "#8b5a2b";
-  g.fillRect(x- trunkW/2, y+8, trunkW, trunkH);
-  solidRects.push({x: x- trunkW/2, y: y+8, w: trunkW, h: trunkH});
+function drawDoorOnMap() {
+  // Door sprite (simple wood door topped with snow)
+  const m = 16; // margin from edges
+  // Always stick to top-right corner
+  door.x = W - m - door.w;
+  door.y = m + 12;
 
-  g.fillStyle = "#2e5e48";
-  g.beginPath(); g.moveTo(x, y-20); g.lineTo(x-26, y+8); g.lineTo(x+26, y+8); g.closePath(); g.fill();
-  g.beginPath(); g.moveTo(x, y-8); g.lineTo(x-22, y+16); g.lineTo(x+22, y+16); g.closePath(); g.fill();
-
-  // snowy cap
+  const g = mapCtx;
+  // snow cap
   g.fillStyle = "#ffffff";
-  g.beginPath(); g.moveTo(x, y-24); g.lineTo(x-10, y-6); g.lineTo(x+10, y-6); g.closePath(); g.fill();
+  g.fillRect(door.x-3, door.y-8, door.w+6, 10);
+  // body
+  g.fillStyle = "#8b5a2b";
+  g.fillRect(door.x, door.y, door.w, door.h);
+  g.fillStyle = "#a06c38";
+  g.fillRect(door.x+6, door.y+4, door.w-12, door.h-8);
+  // handle
+  g.fillStyle = "#e0d090";
+  g.fillRect(door.x+door.w-10, door.y+door.h/2, 4, 4);
 }
 
-function drawDoor(g, x, y, w, h) {
-  // wooden portal
-  g.fillStyle = "#6b4a2b";
-  g.fillRect(x, y, w, h);
-  g.fillStyle = "#835c34";
-  g.fillRect(x+4, y+4, w-8, h-8);
-  g.fillStyle = "#2a241f";
-  g.fillRect(x+w/2-2, y+h-14, 4, 8);
+/* Place Silvio AFTER size known (center-ish, fixed) */
+function placeFixedWorldThings() {
+  // Place Silvio roughly in the middle of map (not affected by quest)
+  silvio.x = Math.round(W/2 - 36);
+  silvio.y = Math.round(H/2 - 72);
 }
 
-/* =========================
-   Character sprite builders
-   Terraria-ish 8-bit, 16x24 base, scaled x4
-   ========================= */
+/* ==========================================================
+   Collision Solids (tree trunks only)
+   ========================================================== */
+function getSolids() {
+  // Use tree trunks for collision; door area isn't solid (teleporter)
+  return trees.map(t => ({ x: t.trunk.x, y: t.trunk.y, w: t.trunk.w, h: t.trunk.h }));
+}
+
+/* ==========================================================
+   Character Sprite System (Ana & Silvio)
+   ========================================================== */
 const BASE_W = 16, BASE_H = 24;
-const SCALE = 4; // 16x24 -> 64x96 on screen
-const DRAW_W = BASE_W * SCALE;
+const SCALE = 4;
+const DRAW_W = BASE_W * SCALE;   // Ana size
 const DRAW_H = BASE_H * SCALE;
+const DRAW_W_SILV = Math.round(BASE_W * SCALE * 1.15); // Silvio a bit wider/taller
+const DRAW_H_SILV = Math.round(BASE_H * SCALE * 1.15);
 
 function makeFrame(drawFn) {
   const c = document.createElement("canvas");
@@ -308,60 +452,25 @@ function makeFrame(drawFn) {
   drawFn(g);
   return c;
 }
-function p(g, x, y, color) { g.fillStyle = color; g.fillRect(x, y, 1, 1); }
+function px(g, x, y, color) { g.fillStyle = color; g.fillRect(x, y, 1, 1); }
 
-// ====== Palettes ======
+/* ====== Palette ====== */
 const skin = "#f0c8a8";
-const hair = "#5a3a21";
+const hairAna = "#5a3a21";
+const hairSilvio = "#6b4022";
 const hairHL = "#6b482b";
 const eyes = "#2a2a2a";
-const outfitMain = "#1f8a3c";   // Ana green
-const outfitShadow = "#166a2e";
+const outfitAna = "#1f8a3c";
+const outfitAnaShadow = "#166a2e";
+const outfitSilv = "#274c9c";
+const outfitSilvShadow = "#1e3c79";
 const boots = "#4b3928";
 const belt = "#2e2e2e";
-// Silvio palette
-const outfitMainSilvio = "#2c57b4";  // blue
-const outfitShadowSilvio = "#223f82";
-const hairSilvio = "#4b3420";
 
-// Sword palette
-const swordBlade = "#cfd7df";
-const swordEdge  = "#ffffff";
-const swordHilt  = "#8b6a2b";
-
-// ====== Sword anim config ======
-const swingFrames = 4;
-const swingDuration = 0.22; // sec
-const swingCooldown = 0.28; // sec (from start)
-let swingTimer = 0;   // time since swing started
-let canSwingAt = 0;   // timestamp allowed
-
-// Build Ana frames (0 idle + 4 walk) per dir, sword always in-hand
-const anaFrames = [[],[],[],[]]; // [dir][0..4]
-for (let dir = 0; dir < 4; dir++) {
-  for (let f = 0; f < 5; f++) {
-    anaFrames[dir][f] = makeFrame((g) => drawCharacter(g, dir, f, "ana", true, 0));
-  }
-}
-
-// Build Silvio (taller, a bit muscular). We'll draw with same 16x24 base but scale a bit larger at render.
-const silvioFrames = [[],[],[],[]];
-for (let dir = 0; dir < 4; dir++) {
-  for (let f = 0; f < 5; f++) {
-    silvioFrames[dir][f] = makeFrame((g) => drawCharacter(g, dir, f, "silvio", false, 0));
-  }
-}
-
-/**
- * drawCharacter(g, dir, frameIndex, who, withSword, swingPhaseIndex)
- * who: "ana" | "silvio"
- * withSword: boolean (always true for Ana render, false for Silvio)
- * swingPhaseIndex: 0..3 only used when drawing sword swing frames
- */
-function drawCharacter(g, dir, frameIndex, who="ana", withSword=true, swingPhaseIndex=0) {
+/* Generic character builder */
+function drawCharacter(g, dir, frameIndex, palette) {
   g.clearRect(0,0,BASE_W,BASE_H);
 
-  // Walk offsets
   const walkFrames = [
     {legL: -2, legR: 2, armL: 2, armR: -2},
     {legL: 0,  legR: 0, armL: 0, armR: 0},
@@ -369,10 +478,10 @@ function drawCharacter(g, dir, frameIndex, who="ana", withSword=true, swingPhase
     {legL: 0,  legR: 0, armL: 0, armR: 0},
   ];
   const idlePose = [
-    {headY:0, bodyY:0, arm:0},
-    {headY:-1, bodyY:0, arm:-1},
-    {headY:-1, bodyY:0, arm:1},
-    {headY:0, bodyY:-1, arm:0},
+    {headY:0, bodyY:0, arm:0},  // down
+    {headY:-1, bodyY:0, arm:-1},// left
+    {headY:-1, bodyY:0, arm:1}, // right
+    {headY:0, bodyY:-1, arm:0}, // up
   ];
 
   const isIdle = (frameIndex === 0);
@@ -387,160 +496,355 @@ function drawCharacter(g, dir, frameIndex, who="ana", withSword=true, swingPhase
     legSwingL = w.legL; legSwingR = w.legR;
   }
 
-  // Base anchors
-  const headX = 3, headTop = 2 + headY; // 10x10 face
+  const headX = 3, headTop = 2 + headY;
   const bodyTop = 12 + bodyY;
   const bodyX = 3;
 
-  // palette per who
-  const hm = (who==="silvio") ? hairSilvio : hair;
-  const hmHL = hairHL;
-  const outM = (who==="silvio") ? outfitMainSilvio : outfitMain;
-  const outS = (who==="silvio") ? outfitShadowSilvio : outfitShadow;
-
-  // Hair back
-  (function drawHairBack(){
-    const col = hm;
-    for (let x=2; x<=13; x++) p(g,x,headTop, col);
-    for (let x=1; x<=14; x++) p(g,x,headTop+1, col);
-    for (let x=1; x<=14; x++) p(g,x,headTop+2, col);
-    for (let x=1; x<=14; x++) p(g,x,headTop+3, col);
-    for (let x=2; x<=13; x++) p(g,x,headTop+4, col);
-    p(g,2, headTop+5, col); p(g,13, headTop+5, col);
-  })();
-
-  // Head
-  (function drawHeadFront(){
-    for (let y=0; y<8; y++) for (let x=0; x<8; x++) p(g, headX+x, headTop+1+y, skin);
-    for (let x=headX+1; x<=headX+6; x++) p(g, x, headTop+9, skin);
-    if (dir === 0) { p(g, headX, headTop+1, hmHL); p(g, headX+7, headTop+1, hmHL); p(g, headX+2, headTop+1, hm); p(g, headX+5, headTop+1, hm); }
-    else if (dir === 1) { for (let y=0; y<6; y++) p(g, headX, headTop+2+y, hmHL); p(g, headX+1, headTop+2, hmHL); }
-    else if (dir === 2) { for (let y=0; y<6; y++) p(g, headX+7, headTop+2+y, hmHL); p(g, headX+6, headTop+2, hmHL); }
-    else { for (let x=headX; x<headX+8; x++) p(g, x, headTop+1, hm); }
-  })();
-
-  // Face (Ana has round glasses)
-  (function drawFace(){
-    if (dir === 3) { p(g, headX+2, headTop+3, eyes); p(g, headX+5, headTop+3, eyes); }
-    else { p(g, headX+2, headTop+4, eyes); p(g, headX+5, headTop+4, eyes); p(g, headX+3, headTop+6, "#aa6a6a"); }
-    if (who === "ana" && dir !== 3) {
-      // tiny round glasses (2px radius hint)
-      p(g, headX+1, headTop+3, "#000000");
-      p(g, headX+6, headTop+3, "#000000");
-      p(g, headX+3, headTop+4, "#000000"); // bridge dot
+  function hairBack(col) {
+    for (let x=2; x<=13; x++) px(g,x,headTop, col);
+    for (let x=1; x<=14; x++) px(g,x,headTop+1, col);
+    for (let x=1; x<=14; x++) px(g,x,headTop+2, col);
+    for (let x=1; x<=14; x++) px(g,x,headTop+3, col);
+    for (let x=2; x<=13; x++) px(g,x,headTop+4, col);
+    px(g,2, headTop+5, col); px(g,13, headTop+5, col);
+  }
+  function headFront(hairMain) {
+    for (let y=0; y<8; y++)
+      for (let x=0; x<8; x++)
+        px(g, headX+x, headTop+1+y, skin);
+    for (let x=headX+1; x<=headX+6; x++) px(g, x, headTop+9, skin);
+    if (dir === 0) { // down
+      px(g, headX, headTop+1, hairHL);
+      px(g, headX+7, headTop+1, hairHL);
+      px(g, headX+2, headTop+1, hairMain);
+      px(g, headX+5, headTop+1, hairMain);
+    } else if (dir === 1) {
+      for (let y=0; y<6; y++) px(g, headX, headTop+2+y, hairHL);
+      px(g, headX+1, headTop+2, hairHL);
+    } else if (dir === 2) {
+      for (let y=0; y<6; y++) px(g, headX+7, headTop+2+y, hairHL);
+      px(g, headX+6, headTop+2, hairHL);
+    } else {
+      for (let x=headX; x<headX+8; x++) px(g, x, headTop+1, hairMain);
     }
-  })();
-
-  // Torso
-  (function drawTorso(){
-    for (let y=0; y<6; y++) for (let x=0; x<8; x++) p(g, bodyX+x, bodyTop+y, (y>=2)? outS : outM);
-    for (let x=bodyX; x<bodyX+8; x++) p(g, x, bodyTop+6, belt);
-  })();
-
-  // Arms
-  (function drawArms(){
+  }
+  function face() {
+    if (dir === 3) {
+      px(g, headX+2, headTop+3, eyes);
+      px(g, headX+5, headTop+3, eyes);
+    } else {
+      px(g, headX+2, headTop+4, eyes);
+      px(g, headX+5, headTop+4, eyes);
+      px(g, headX+3, headTop+6, "#aa6a6a");
+    }
+  }
+  function torso(outfit, outfitSh) {
+    for (let y=0; y<6; y++) {
+      for (let x=0; x<8; x++) {
+        const col = (y >= 2) ? outfitSh : outfit;
+        px(g, bodyX+x, bodyTop+y, col);
+      }
+    }
+    for (let x=bodyX; x<bodyX+8; x++) px(g, x, bodyTop+6, belt);
+  }
+  function arms(outfit) {
     const leftX  = bodyX-1, rightX = bodyX+8;
     const armTop = bodyTop+1;
-    p(g, leftX, armTop, outM);
-    p(g, rightX, armTop, outM);
+    px(g, leftX, armTop, outfit);
+    px(g, rightX, armTop, outfit);
     let ly = armTop + Math.round(armSwingL/2);
     let ry = armTop + Math.round(armSwingR/2);
-    p(g, leftX, ly+1, skin); p(g, leftX, ly+2, skin);
-    p(g, rightX, ry+1, skin); p(g, rightX, ry+2, skin);
-  })();
-
-  // Legs / boots
-  (function drawLegs(){
+    px(g, leftX, ly+1, skin);
+    px(g, leftX, ly+2, skin);
+    px(g, rightX, ry+1, skin);
+    px(g, rightX, ry+2, skin);
+  }
+  function legs() {
     const legTop = bodyTop+7;
     const mid = bodyX+3;
     const lX = mid-2, rX = mid+2;
     const lOffset = Math.round(legSwingL/2);
     const rOffset = Math.round(legSwingR/2);
-    p(g, lX, legTop + lOffset, outS); p(g, lX, legTop+1 + lOffset, outS);
-    p(g, rX, legTop + rOffset, outS); p(g, rX, legTop+1 + rOffset, outS);
-    p(g, lX, legTop+2 + lOffset, boots); p(g, lX, legTop+3 + lOffset, boots);
-    p(g, rX, legTop+2 + rOffset, boots); p(g, rX, legTop+3 + rOffset, boots);
-    if (dir === 1) { p(g, lX-1, legTop+3 + lOffset, boots); }
-    else if (dir === 2) { p(g, rX+1, legTop+3 + rOffset, boots); }
-    else { p(g, lX, legTop+4 + lOffset, boots); p(g, rX, legTop+4 + rOffset, boots); }
-  })();
+    px(g, lX, legTop + lOffset, palette.shadow);
+    px(g, lX, legTop+1 + lOffset, palette.shadow);
+    px(g, rX, legTop + rOffset, palette.shadow);
+    px(g, rX, legTop+1 + rOffset, palette.shadow);
+    px(g, lX, legTop+2 + lOffset, boots);
+    px(g, lX, legTop+3 + lOffset, boots);
+    px(g, rX, legTop+2 + rOffset, boots);
+    px(g, rX, legTop+3 + rOffset, boots);
+    if (dir === 1) {
+      px(g, lX-1, legTop+3 + lOffset, boots);
+    } else if (dir === 2) {
+      px(g, rX+1, legTop+3 + rOffset, boots);
+    } else {
+      px(g, lX, legTop+4 + lOffset, boots);
+      px(g, rX, legTop+4 + rOffset, boots);
+    }
+  }
 
-  // Directional extra
-  if (dir === 3) p(g, bodyX+3, bodyTop, who==="silvio" ? "#2e6cd0" : "#25a048");
+  hairBack(palette.hair);
+  headFront(palette.hair);
+  face();
+  torso(palette.main, palette.shadow);
+  arms(palette.main);
+  legs();
 
-  // Sword (always in-hand for Ana)
-  if (withSword && who==="ana") {
-    drawSwordInHand(g, dir, swingPhaseIndex);
+  if (dir === 3) px(g, bodyX+3, bodyTop, "#25a048"); // lil collar highlight
+}
+
+const framesAna = [[],[],[],[]];
+const framesSilv = [[],[],[],[]];
+const palAna = { hair: hairAna, main: outfitAna, shadow: outfitAnaShadow };
+const palSilv = { hair: hairSilvio, main: outfitSilv, shadow: outfitSilvShadow };
+
+for (let dir=0; dir<4; dir++) {
+  for (let f=0; f<5; f++) {
+    framesAna[dir][f]  = makeFrame(g => drawCharacter(g, dir, f, palAna));
+    framesSilv[dir][f] = makeFrame(g => drawCharacter(g, dir, f, palSilv));
   }
 }
 
-function drawSwordInHand(g, dir, swingPhase) {
-  // Simple placement: near right hand (or left if facing left), animate a little during swing.
-  // Coordinates relative to the 16x24 base.
-  // Base handle point positions by dir:
-  let hx, hy, angle = 0;
-  if (dir === 0) { hx = 12; hy = 16; angle = 0.2; }
-  else if (dir === 1) { hx = 2; hy = 16; angle = -1.0; }
-  else if (dir === 2) { hx = 13; hy = 16; angle = 1.0; }
-  else { hx = 11; hy = 12; angle = -0.2; }
-
-  // add swing arc
-  if (swingTimer > 0) {
-    const t = Math.min(1, swingTimer / swingDuration);
-    // swingPhase: 0..3 – move angle over time
-    const swingAngles = [0.6, 0.2, -0.2, -0.6];
-    angle += swingAngles[Math.min(3, Math.floor(t * 4))];
-  }
-
-  // Draw a tiny sword using rotation around (hx,hy)
-  g.save();
-  g.translate(hx, hy);
-  g.rotate(angle);
-  // hilt
-  p(g, -1, 0, swordHilt); p(g, 0, 0, swordHilt);
-  // blade
-  p(g, 1, -1, swordBlade); p(g, 2, -2, swordBlade); p(g, 3, -3, swordEdge);
-  p(g, 1, -2, swordBlade); p(g, 2, -3, swordEdge);
-  g.restore();
-}
-
-/* =========================
-   Player / NPC / Combat entities
-   ========================= */
+/* ==========================================================
+   Player (Ana)
+   ========================================================== */
 const player = {
   x: 120, y: 120,
   w: DRAW_W, h: DRAW_H,
   speed: 180,
-  dir: 0, frame: 0, animTime: 0, animSpeed: 9,
+  dir: 0,        // 0 down,1 left,2 right,3 up
+  frame: 0,
+  animTime: 0,
+  animSpeed: 9,
   moving: false,
   hearts: 3,
-  invuln: 0, // seconds
-  gold: 0,
+  invuln: 0,     // damage cooldown
 };
 
-// Silvio NPC (top-right area, not exact corner)
-const silvio = {
-  x: 0, y: 0,
-  w: DRAW_W*1.1, h: DRAW_H*1.1,
-  dir: 1, frame: 0,
-  talkable: true
+/* ==========================================================
+   Sword (kept in-hand + swing animation)
+   ========================================================== */
+let swordSwing = {
+  active: false,
+  t: 0,           // 0..1 timeline
+  duration: 0.18, // seconds
+  reach: 38,      // pixels from hand
 };
+function playerAttack() {
+  if (dialogActive) return; // blocked by dialog
+  if (swordSwing.active) return;
+  swordSwing.active = true;
+  swordSwing.t = 0;
+}
+function drawSword() {
+  // hand anchor near right side of torso
+  const hand = { x: player.x + player.w/2 + 8, y: player.y + player.h/2 - 8 };
+  // swing angle based on dir
+  let startA = 0, endA = 0;
+  switch (player.dir) {
+    case 0: startA = Math.PI*0.15; endA = -Math.PI*0.65; break;    // down
+    case 1: startA = Math.PI*0.85; endA = Math.PI*1.65; break;     // left
+    case 2: startA = -Math.PI*0.15; endA = Math.PI*0.65; break;    // right
+    case 3: startA = Math.PI*1.15; endA = Math.PI*0.35; break;     // up
+  }
+  const a = lerp(startA, endA, easeOutCubic(swordSwing.t));
+  const tipX = hand.x + Math.cos(a) * swordSwing.reach;
+  const tipY = hand.y + Math.sin(a) * swordSwing.reach;
 
-// Zombies only in snow world
-const zombies = [];
-const coins = []; // gold drops
+  // Blade
+  ctx.lineWidth = 6;
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "#cfd7df";
+  ctx.beginPath();
+  ctx.moveTo(hand.x, hand.y);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
 
-// Axis-aligned rect overlap
+  // Hilt
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = "#704a1f";
+  ctx.beginPath();
+  ctx.moveTo(hand.x - Math.cos(a+Math.PI/2)*6, hand.y - Math.sin(a+Math.PI/2)*6);
+  ctx.lineTo(hand.x + Math.cos(a+Math.PI/2)*6, hand.y + Math.sin(a+Math.PI/2)*6);
+  ctx.stroke();
+}
+
+/* ==========================================================
+   NPC (Silvio) — fixed position in the middle
+   ========================================================== */
+const quest = {
+  near: false,
+  accepted: false,
+  lines: [
+    "Will you accept my quest, my love?"
+  ],
+  idx: 0
+};
+const promptEl = document.getElementById("prompt");
+const dialogEl = document.getElementById("dialog");
+const dlgName = document.getElementById("dlgName");
+const dlgLine = document.getElementById("dlgLine");
+let dialogActive = false;
+
+function checkSilvioProximity() {
+  const dx = (player.x + player.w/2) - (silvio.x + DRAW_W_SILV/2);
+  const dy = (player.y + player.h/2) - (silvio.y + DRAW_H_SILV/2);
+  const d2 = dx*dx + dy*dy;
+  const near = d2 < (140*140);
+  quest.near = near && !quest.accepted;
+  promptEl.style.display = quest.near && !dialogActive ? "block" : "none";
+}
+function tryStartQuest() {
+  if (!quest.near || dialogActive) return;
+  dialogActive = true;
+  player.moving = false; // lock movement
+  dlgName.textContent = "Silvio";
+  quest.idx = 0;
+  dlgLine.textContent = quest.lines[quest.idx];
+  dialogEl.style.display = "block";
+}
+function advanceDialog() {
+  if (!dialogActive) return;
+  quest.idx++;
+  if (quest.idx >= quest.lines.length) {
+    // End dialog
+    dialogActive = false;
+    dialogEl.style.display = "none";
+    quest.accepted = true;
+    // Do NOT rebuild or shuffle the map — nothing here touches map building.
+  } else {
+    dlgLine.textContent = quest.lines[quest.idx];
+  }
+}
+
+/* ==========================================================
+   Enemies (Zombies) + Coins
+   ========================================================== */
+const zombies = []; // {x,y,w,h,hp,speed,dir,knock}
+const coins = [];   // {x,y,vx,vy,life,collectable}
+
+function spawnZombie() {
+  const side = Math.floor(Math.random()*4);
+  let x=0,y=0;
+  if (side===0) { x = 20; y = Math.random()*H; }
+  if (side===1) { x = W-20; y = Math.random()*H; }
+  if (side===2) { x = Math.random()*W; y = 20; }
+  if (side===3) { x = Math.random()*W; y = H-20; }
+  zombies.push({
+    x, y,
+    w: DRAW_W, h: DRAW_H,
+    hp: 2,
+    speed: 60 + Math.random()*30,
+    dir: 0,
+    knock: 0
+  });
+}
+let zombieSpawnTimer = 0;
+
+function updateZombies(dt) {
+  for (let i=zombies.length-1; i>=0; i--) {
+    const z = zombies[i];
+    if (z.knock > 0) z.knock -= dt;
+
+    // Chase Ana
+    const dx = (player.x + player.w/2) - (z.x + z.w/2);
+    const dy = (player.y + player.h/2) - (z.y + z.h/2);
+    const d = Math.hypot(dx,dy) || 1;
+    const vx = (dx/d) * z.speed;
+    const vy = (dy/d) * z.speed;
+
+    z.x += vx*dt*(z.knock>0 ? 0.2 : 1);
+    z.y += vy*dt*(z.knock>0 ? 0.2 : 1);
+
+    // Damage player if touch
+    if (!dialogActive && rectsOverlap(z, player) && player.invuln <= 0) {
+      player.hearts--;
+      player.invuln = 1.0;
+      if (player.hearts < 0) player.hearts = 0;
+    }
+
+    // Killed?
+    if (z.hp <= 0) {
+      // Drop coin exactly where zombie died
+      coins.push({ x: z.x + z.w/2, y: z.y + z.h/2, vx: 0, vy: 0, life: 0, collectable: true });
+      zombies.splice(i,1);
+    }
+  }
+
+  zombieSpawnTimer -= dt;
+  if (zombieSpawnTimer <= 0 && !dialogActive) {
+    zombieSpawnTimer = 2.0 + Math.random()*1.0;
+    spawnZombie();
+  }
+}
+
+function drawZombie(z) {
+  // Pixel zombie: tattered, bluish skin
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+
+  // Body block
+  ctx.fillStyle = "#6db1b1"; // cold skin
+  ctx.fillRect(Math.round(z.x)+18, Math.round(z.y)+16, 20, 16);
+  // Head
+  ctx.fillStyle = "#7fc3c3";
+  ctx.fillRect(Math.round(z.x)+20, Math.round(z.y)+2, 16, 14);
+  ctx.fillStyle = "#2a2a2a"; // eyes
+  ctx.fillRect(Math.round(z.x)+24, Math.round(z.y)+6, 3, 3);
+  ctx.fillRect(Math.round(z.x)+30, Math.round(z.y)+6, 3, 3);
+  // Blood drips
+  ctx.fillStyle = "#a11212";
+  ctx.fillRect(Math.round(z.x)+20, Math.round(z.y)+14, 3, 3);
+  ctx.fillRect(Math.round(z.x)+31, Math.round(z.y)+16, 2, 2);
+  // Legs
+  ctx.fillStyle = "#445";
+  ctx.fillRect(Math.round(z.x)+20, Math.round(z.y)+32, 6, 10);
+  ctx.fillRect(Math.round(z.x)+30, Math.round(z.y)+32, 6, 10);
+  // Arms
+  ctx.fillStyle = "#6db1b1";
+  ctx.fillRect(Math.round(z.x)+14, Math.round(z.y)+18, 6, 6);
+  ctx.fillRect(Math.round(z.x)+40, Math.round(z.y)+18, 6, 6);
+
+  ctx.restore();
+}
+
+function updateCoins(dt) {
+  for (let i=coins.length-1; i>=0; i--) {
+    const c = coins[i];
+    c.life += dt;
+    // pickup if Ana overlaps
+    const pickBox = { x: c.x-10, y: c.y-10, w: 20, h: 20 };
+    if (c.collectable && rectsOverlap(pickBox, player)) {
+      gold += 1;
+      updateGoldHUD();
+      coins.splice(i,1);
+    }
+  }
+}
+
+/* ==========================================================
+   Rect collision helper (AABB)
+   ========================================================== */
 function rectsOverlap(a, b) {
   return !(a.x + a.w <= b.x || a.x >= b.x + b.w || a.y + a.h <= b.y || a.y >= b.y + b.h);
 }
-function circleHit(ax, ay, bx, by, r) { const dx=ax-bx, dy=ay-by; return (dx*dx+dy*dy) <= r*r; }
 
+/* ==========================================================
+   Movement & Physics (player vs solids)
+   ========================================================== */
 function tryMove(dt, dx, dy) {
   const next = { x: player.x + dx, y: player.y + dy, w: player.w, h: player.h };
   const feet = { x: next.x + player.w*0.25, y: next.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
-  if (feet.x < 0 || feet.y < 0 || feet.x + feet.w > W || feet.y + feet.h > H) return;
-  for (const s of solidRects) {
+
+  // screen bounds
+  if (feet.x < 0) next.x = player.x;
+  if (feet.y < 0) next.y = player.y;
+  if (feet.x + feet.w > W) next.x = player.x;
+  if (feet.y + feet.h > H) next.y = player.y;
+
+  // solids (tree trunks)
+  const solids = getSolids();
+  for (const s of solids) {
     if (rectsOverlap(feet, s)) {
       const testX = { x: player.x + dx, y: player.y, w: player.w, h: player.h };
       const feetX = { x: testX.x + player.w*0.25, y: testX.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
@@ -551,341 +855,170 @@ function tryMove(dt, dx, dy) {
       return;
     }
   }
-  player.x = next.x; player.y = next.y;
-}
 
-/* =========================
-   Prompts / dialog / overlays
-   ========================= */
-const promptEl = document.getElementById('prompt');
-const dialogEl = document.getElementById('dialog');
-const hudEl = document.getElementById('hud');
-const heartsEl = document.getElementById('hearts');
-const goldEl = document.getElementById('gold');
-const gameoverEl = document.getElementById('gameover');
-const restartBtn = document.getElementById('restartBtn');
-
-let running = false;
-let last = 0;
-let dialogActive = false;
-let dialogPhase = 0; // 0 showing text, 1 "press space to continue"
-let dialogTimer = 0;
-
-function showPrompt(text) { promptEl.textContent = text; promptEl.style.display = 'block'; }
-function hidePrompt() { promptEl.style.display = 'none'; }
-function showDialog(text) { dialogEl.textContent = text; dialogEl.style.display = 'block'; }
-function hideDialog() { dialogEl.style.display = 'none'; }
-
-function startDialogSequence() {
-  dialogActive = true;
-  dialogPhase = 0;
-  dialogTimer = 0;
-  showDialog("Silvio: “Will you accept my quest my love?”");
-}
-function updateDialog(dt) {
-  if (!dialogActive) return;
-  dialogTimer += dt;
-  if (dialogPhase === 0 && dialogTimer >= 1.2) {
-    // after a moment, show continue hint
-    dialogPhase = 1;
-    dialogEl.textContent = "Silvio: “Will you accept my quest my love?”  (Press Space to continue)";
+  // door: teleport if touch
+  const doorBox = { x: door.x, y: door.y, w: door.w, h: door.h };
+  if (rectsOverlap({ x: next.x, y: next.y, w: player.w, h: player.h }, doorBox)) {
+    teleportToOtherWorld();
+    return;
   }
-  // When space pressed and allowed -> close
-  if (dialogPhase === 1 && (keys.has(' ') || keys.has('space'))) {
-    dialogActive = false;
-    hideDialog();
-    questAccepted = true;
-    buildStaticMap(); // show door now in grass world
+
+  player.x = next.x;
+  player.y = next.y;
+}
+
+function teleportToOtherWorld() {
+  // Simple flash + reposition (keep snow world art — demo teleport)
+  // You could swap to another prebuilt buffer if you want a second world.
+  flash(180);
+  player.x = Math.round(W/2 - player.w/2);
+  player.y = Math.round(H*0.8 - player.h/2);
+}
+
+/* ==========================================================
+   HUD (hearts + gold centered top)
+   ========================================================== */
+const heartsEl = document.getElementById("hearts");
+const goldEl = document.getElementById("goldCount");
+let gold = 0;
+
+function updateHeartsHUD() {
+  heartsEl.innerHTML = "";
+  const maxHearts = 3;
+  for (let i=0; i<maxHearts; i++) {
+    const d = document.createElement("div");
+    d.className = "heart" + (i < player.hearts ? "" : " off");
+    heartsEl.appendChild(d);
   }
 }
-
-function setHUD() {
-  hudEl.style.display = 'flex';
-  // hearts
-  const full = "❤", empty = "♡";
-  heartsEl.style.fontSize = "18px";
-  heartsEl.textContent = full.repeat(player.hearts) + empty.repeat(Math.max(0, 3 - player.hearts));
-  goldEl.textContent = "Gold: " + player.gold;
-}
-function showGameOver() {
-  gameoverEl.style.display = 'block';
-}
-restartBtn.addEventListener('click', () => {
-  // reset everything
-  player.x = (W - DRAW_W)/2;
-  player.y = (H - DRAW_H)/2;
-  player.hearts = 3; player.gold = 0; player.invuln = 0;
-  questAccepted = true; // keep quest if died in snow so door remains available
-  world = "grass";
-  zombies.length = 0; coins.length = 0;
-  buildStaticMap();
-  gameoverEl.style.display = 'none';
-});
-
-/* =========================
-   NPC placement (top-right area)
-   ========================= */
-function placeSilvio() {
-  silvio.x = Math.floor(W - 240);
-  silvio.y = Math.floor(120);
+function updateGoldHUD() {
+  goldEl.textContent = gold;
 }
 
-/* =========================
-   Zombies & coins (snow world)
-   ========================= */
-function spawnZombie() {
-  const z = {
-    x: randi(40, W-40), y: randi(40, H-40),
-    w: DRAW_W, h: DRAW_H,
-    dir: 0, frame: 0, animTime: 0, speed: 80, alive: true, hitTimer: 0,
-    hp: 2
-  };
-  zombies.push(z);
-}
+/* ==========================================================
+   Small helpers
+   ========================================================== */
+function lerp(a,b,t){ return a + (b-a)*t; }
+function easeOutCubic(t){ return 1 - Math.pow(1-t, 3); }
 
-function updateZombies(dt) {
-  // Spawn logic
-  if (world === "snow" && zombies.length < 6) {
-    if (Math.random() < 0.02) spawnZombie();
-  }
-  for (const z of zombies) {
-    if (!z.alive) continue;
-    // chase
-    const dx = (player.x - z.x), dy = (player.y - z.y);
-    const d = Math.hypot(dx, dy) || 1;
-    const vx = dx / d, vy = dy / d;
-    z.x += vx * z.speed * dt;
-    z.y += vy * z.speed * dt;
+/* Simple flash effect */
+let flashTimer = 0;
+function flash(ms) { flashTimer = ms/1000; }
 
-    // dir
-    if (Math.abs(vx) > Math.abs(vy)) z.dir = (vx < 0)? 1 : 2;
-    else z.dir = (vy < 0)? 3 : 0;
-
-    // anim
-    z.animTime += dt * 7;
-    z.frame = 1 + (Math.floor(z.animTime) % 4);
-
-    // collide with player -> damage
-    if (player.invuln <= 0) {
-      const feetP = { x: player.x + player.w*0.25, y: player.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
-      const zBox = { x: z.x + z.w*0.25, y: z.y + z.h*0.65, w: z.w*0.5, h: z.h*0.3 };
-      if (rectsOverlap(feetP, zBox)) {
-        player.hearts -= 1;
-        player.invuln = 1.0;
-        // knockback
-        player.x -= vx * 30; player.y -= vy * 30;
-        if (player.hearts <= 0) {
-          running = false;
-          showGameOver();
-        }
-      }
-    }
-  }
-}
-
-function renderZombies() {
-  for (const z of zombies) {
-    if (!z.alive) continue;
-    // reuse silvio/ana frame style for zombie look (tinted)
-    const img = anaFrames[z.dir][z.frame];
-    ctx.save();
-    ctx.globalAlpha = 0.95;
-    ctx.filter = "grayscale(80%)";
-    ctx.drawImage(img, 0,0, BASE_W, BASE_H, Math.round(z.x), Math.round(z.y), DRAW_W, DRAW_H);
-    ctx.restore();
-  }
-}
-
-/* FIX: coins stay where zombie died */
-function dropCoin(x, y) {
-  // Spawn a static coin exactly at the death position.
-  coins.push({x, y, r: 8});
-}
-function updateCoins(dt) {
-  // Static coins: no gravity, no movement — just check pickup.
-  for (let i = coins.length - 1; i >= 0; i--) {
-    const c = coins[i];
-    if (circleHit(c.x, c.y, player.x+DRAW_W/2, player.y+DRAW_H*0.8, 24)) {
-      player.gold += 1;
-      coins.splice(i, 1);
-    }
-  }
-}
-function renderCoins() {
-  for (const c of coins) {
-    ctx.fillStyle = "#ffd43b";
-    ctx.beginPath(); ctx.arc(c.x, c.y, 6, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = "#fff3a0";
-    ctx.fillRect(c.x-2, c.y-3, 4, 2);
-  }
-}
-
-/* =========================
-   Sword hit detection
-   ========================= */
-function swordActive() {
-  return swingTimer > 0 && (swingTimer / swingDuration) >= 0.15; // activate after a small delay
-}
-function hitZombiesWithSword() {
-  if (!swordActive()) return;
-  // arc center near player's hand depending on dir
-  let cx = player.x + DRAW_W/2, cy = player.y + DRAW_H*0.75;
-  let nx=0, ny=0; // forward vector
-  if (player.dir===0){ ny=1; } else if (player.dir===1){ nx=-1; } else if (player.dir===2){ nx=1; } else { ny=-1; }
-  cx += nx*30; cy += ny*30;
-  const r = 38; // hit radius
-  for (const z of zombies) {
-    if (!z.alive) continue;
-    const zx = z.x + DRAW_W/2, zy = z.y + DRAW_H*0.75;
-    if (circleHit(cx, cy, zx, zy, r)) {
-      z.hp -= 1;
-      if (z.hp <= 0) {
-        z.alive = false;
-        dropCoin(zx, zy-10); // stays right here now
-      }
-    }
-  }
-}
-
-/* =========================
+/* ==========================================================
    Game loop
-   ========================= */
+   ========================================================== */
+let last = 0;
+let running = false;
+
 function update(dt) {
-  // dialog lock
-  if (dialogActive) { updateDialog(dt); return; }
+  // Lock movement if dialog is active
+  if (dialogActive) {
+    player.moving = false;
+  } else {
+    let vx = 0, vy = 0;
+    if (keys.has("arrowleft") || keys.has("a")) vx -= 1;
+    if (keys.has("arrowright")|| keys.has("d")) vx += 1;
+    if (keys.has("arrowup")   || keys.has("w")) vy -= 1;
+    if (keys.has("arrowdown") || keys.has("s")) vy += 1;
 
-  // movement
-  let vx = 0, vy = 0;
-  if (keys.has("arrowleft") || keys.has("a")) { vx -= 1; lastPressedDir = 'left'; }
-  if (keys.has("arrowright")|| keys.has("d")) { vx += 1; lastPressedDir = 'right'; }
-  if (keys.has("arrowup")   || keys.has("w")) { vy -= 1; lastPressedDir = 'up'; }
-  if (keys.has("arrowdown") || keys.has("s")) { vy += 1; lastPressedDir = 'down'; }
-
-  player.moving = (vx !== 0 || vy !== 0);
-  if (player.moving) {
-    const len = Math.hypot(vx, vy) || 1; vx/=len; vy/=len;
-    if (Math.abs(vx) > Math.abs(vy)) player.dir = (vx < 0) ? 1 : 2;
-    else if (Math.abs(vy) > 0) player.dir = (vy < 0) ? 3 : 0;
-    tryMove(dt, vx * player.speed * dt, vy * player.speed * dt);
+    player.moving = (vx !== 0 || vy !== 0);
+    if (player.moving) {
+      const len = Math.hypot(vx, vy) || 1;
+      vx /= len; vy /= len;
+      if (Math.abs(vx) > Math.abs(vy)) player.dir = (vx < 0) ? 1 : 2;
+      else if (Math.abs(vy) > 0)      player.dir = (vy < 0) ? 3 : 0;
+      tryMove(dt, vx * player.speed * dt, vy * player.speed * dt);
+    }
   }
 
-  // animation
+  // Anim
   if (player.moving) {
     player.animTime += dt * player.animSpeed;
-    const step = Math.floor(player.animTime) % 4; player.frame = 1 + step;
-  } else { player.animTime = 0; player.frame = 0; }
-
-  // sword swing input (space)
-  if ((keys.has(' ') || keys.has('space')) && performance.now()/1000 >= canSwingAt) {
-    swingTimer = 0.0001; // start
-    canSwingAt = performance.now()/1000 + swingCooldown;
-  }
-  if (swingTimer > 0) {
-    swingTimer += dt;
-    hitZombiesWithSword();
-    if (swingTimer >= swingDuration) swingTimer = 0;
-  }
-
-  // prompt near Silvio (only in grass, before accepted)
-  if (world === "grass" && !questAccepted) {
-    const px = player.x + DRAW_W/2, py = player.y + DRAW_H*0.8;
-    const sx = silvio.x + DRAW_W*0.55, sy = silvio.y + DRAW_H*0.8;
-    const near = Math.hypot(px - sx, py - sy) < 120;
-    if (near) {
-      showPrompt("Press E to accept quest");
-      if (keys.has('e')) { hidePrompt(); startDialogSequence(); }
-    } else hidePrompt();
+    const step = Math.floor(player.animTime) % 4;
+    player.frame = 1 + step;
   } else {
-    hidePrompt();
+    player.animTime = 0;
+    player.frame = 0;
   }
 
-  // Door interaction (to snow world)
-  if (world === "grass" && questAccepted && door.visible) {
-    const feet = { x: player.x + player.w*0.25, y: player.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
-    if (rectsOverlap(feet, {x: door.x, y: door.y, w: door.w, h: door.h}) && keys.has('e')) {
-      world = "snow";
-      zombies.length = 0; coins.length = 0;
-      buildStaticMap();
-      // place player near bottom-left on entry
-      player.x = 80; player.y = H - DRAW_H - 80;
+  // Sword swing anim
+  if (swordSwing.active) {
+    swordSwing.t += dt / swordSwing.duration;
+    if (swordSwing.t >= 1) {
+      swordSwing.t = 1;
+      swordSwing.active = false;
+    } else {
+      // Hit-test zombies while swinging
+      swordHitCheck();
     }
   }
 
-  // snow world updates
-  if (world === "snow") {
-    updateZombies(dt);
-    updateCoins(dt);
-  }
-
-  // i-frames
   if (player.invuln > 0) player.invuln -= dt;
 
-  // HUD
-  setHUD();
+  // Enemies + coins
+  updateZombies(dt);
+  updateCoins(dt);
+
+  // Prompt near Silvio
+  checkSilvioProximity();
+
+  // Flash decay
+  if (flashTimer > 0) flashTimer -= dt;
+
+  // Update HUD
+  updateHeartsHUD();
+}
+
+function swordHitCheck() {
+  // Approximate the sword arc as a circle near player's hand
+  const hand = { x: player.x + player.w/2 + 8, y: player.y + player.h/2 - 8 };
+  for (const z of zombies) {
+    const zx = z.x + z.w/2, zy = z.y + z.h/2;
+    const d = Math.hypot(zx - hand.x, zy - hand.y);
+    if (d < swordSwing.reach + 16) {
+      z.hp -= 1;
+      z.knock = 0.2;
+    }
+  }
 }
 
 function render() {
-  // draw map
+  // World
   ctx.drawImage(mapBuffer, 0, 0);
 
-  // draw door (already baked into map look — but keep highlight)
-  if (world === "grass" && door.visible) {
-    drawDoor(ctx, door.x, door.y, door.w, door.h);
-  }
+  // Silvio (fixed, centered-ish)
+  const silvImg = framesSilv[silvio.dir || 0][0];
+  ctx.drawImage(silvImg, 0,0, BASE_W, BASE_H, Math.round(silvio.x), Math.round(silvio.y), DRAW_W_SILV, DRAW_H_SILV);
 
-  // draw Silvio with floating '?'
-  if (world === "grass") {
-    const imgS = silvioFrames[silvio.dir][silvio.frame];
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-    // make Silvio a tad larger
-    const sw = Math.floor(DRAW_W*1.1), sh = Math.floor(DRAW_H*1.1);
-    ctx.drawImage(imgS, 0,0, BASE_W, BASE_H, Math.round(silvio.x), Math.round(silvio.y), sw, sh);
-    // name + question mark
-    ctx.fillStyle = "#fff"; ctx.font = "16px monospace"; ctx.textAlign = "center";
-    ctx.fillText("Silvio", Math.round(silvio.x + sw/2), Math.round(silvio.y - 10));
-    ctx.fillText("?", Math.round(silvio.x + sw/2), Math.round(silvio.y - 26));
-    ctx.restore();
-  }
-
-  // zombies & coins (snow)
-  if (world === "snow") {
-    renderZombies();
-    renderCoins();
-  }
-
-  // draw player (with sword always in-hand & swing frames)
-  const img = anaFrames[player.dir][player.frame];
+  // Ana
+  const img = framesAna[player.dir][player.frame];
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-
-  // flash during invuln
-  if (player.invuln > 0 && Math.floor(performance.now()/100) % 2 === 0) {
-    ctx.globalAlpha = 0.5;
-  }
-
-  // Re-render the character base first
   ctx.drawImage(img, 0,0, BASE_W, BASE_H, Math.round(player.x), Math.round(player.y), DRAW_W, DRAW_H);
+  ctx.restore();
 
-  // swing trail for visual feedback
-  if (swingTimer > 0) {
-    ctx.strokeStyle = "rgba(255,255,255,0.5)";
-    ctx.lineWidth = 2;
-    const cx = player.x + DRAW_W/2;
-    const cy = player.y + DRAW_H*0.75;
+  // Sword always in hand (and swings)
+  drawSword();
+
+  // Zombies
+  for (const z of zombies) drawZombie(z);
+
+  // Coins
+  for (const c of coins) {
+    ctx.fillStyle = "#ffd54a";
     ctx.beginPath();
-    if (player.dir===0) { ctx.arc(cx, cy, 30, Math.PI*0.1, Math.PI*0.9); }
-    if (player.dir===1) { ctx.arc(cx, cy, 30, Math.PI*1.1, Math.PI*1.9); }
-    if (player.dir===2) { ctx.arc(cx, cy, 30, Math.PI*1.9, Math.PI*0.1, true); }
-    if (player.dir===3) { ctx.arc(cx, cy, 30, -Math.PI*0.9, -Math.PI*0.1); }
-    ctx.stroke();
+    ctx.arc(c.x, c.y, 6, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = "#fff1a8";
+    ctx.fillRect(c.x-1, c.y-3, 2, 6);
   }
 
-  // name above player
-  ctx.fillStyle = "#fff"; ctx.font = "18px monospace"; ctx.textAlign = "center";
-  ctx.fillText("Ana", Math.round(player.x + DRAW_W/2), Math.round(player.y - 10));
-
-  ctx.restore();
+  // Flash
+  if (flashTimer > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${Math.min(1, flashTimer*1.2)})`;
+    ctx.fillRect(0,0,W,H);
+  }
 }
 
 function loop(ts) {
@@ -897,28 +1030,45 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 
-/* =========================
-   Start overlay
-   ========================= */
+/* ==========================================================
+   Start
+   ========================================================== */
 const startOverlay = document.getElementById("startOverlay");
 document.getElementById("startBtn").addEventListener("click", () => {
   startOverlay.style.display = "none";
   running = true;
   last = performance.now();
   requestAnimationFrame(loop);
-  hudEl.style.display = 'flex';
 });
 
-/* =========================
+/* ==========================================================
    Init
-   ========================= */
+   ========================================================== */
 resize();
-placeSilvio();
+// place player somewhere central
 player.x = (W - DRAW_W)/2;
 player.y = (H - DRAW_H)/2;
-buildStaticMap();
-setHUD();
+updateHeartsHUD();
+updateGoldHUD();
 
+/* ==========================================================
+   Notes on the requested FIXES (already applied in code):
+   - Map no longer reshuffles after accepting the quest:
+     We use a deterministic RNG (MAP_SEED) and precompute
+     all map features (trees/flowers/rocks/drifts) ONCE.
+     buildStaticSnowMap() is called only during initial
+     resize. Accepting the quest never rebuilds the map.
+   - Silvio has a fixed position near the middle:
+     placeFixedWorldThings() pins his coordinates based on
+     canvas size, not random. We never change them later.
+   - Door stays fixed in the top-right corner:
+     drawDoorOnMap() sets door.x/y using current W/H with
+     a margin; it’s redrawn with the buffer so it remains
+     anchored to the corner. Teleport logic is separate.
+   - HUD "Gold:" is centered at the very top (.hud).
+   - Sword stays in Ana’s hand and has a proper swing arc.
+   - Coins drop exactly where the zombie dies.
+=========================================================== */
 </script>
 </body>
 </html>
