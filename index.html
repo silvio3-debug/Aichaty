@@ -203,7 +203,7 @@ function drawGrassWorld() {
     drawTree(mapCtx, x, y, false);
   }
 
-  // Door appears after quest accepted
+  // Door appears after quest accepted (baked when map is built, e.g., after resize)
   door.visible = questAccepted;
   if (door.visible) {
     // place near top-right area
@@ -595,7 +595,13 @@ function updateDialog(dt) {
     dialogActive = false;
     hideDialog();
     questAccepted = true;
-    buildStaticMap(); // show door now in grass world
+
+    // ***** FIX: Don't rebuild the map here (that caused random re-rolls)
+    // Just reveal the door on the existing map so nothing shifts.
+    door.visible = true;
+    door.x = Math.floor(W - 120);
+    door.y = Math.floor(80);
+    // (No buildStaticMap() call)
   }
 }
 
@@ -828,7 +834,7 @@ function render() {
   // draw map
   ctx.drawImage(mapBuffer, 0, 0);
 
-  // draw door (already baked into map look — but keep highlight)
+  // draw door (keep as a dynamic overlay so we can reveal it without rebuilding the map)
   if (world === "grass" && door.visible) {
     drawDoor(ctx, door.x, door.y, door.w, door.h);
   }
