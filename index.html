@@ -18,7 +18,7 @@
     height: 100vh;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
-    background: #000; /* covered by map render */
+    background: #000;
   }
   /* Start overlay */
   #startOverlay {
@@ -60,14 +60,14 @@
   .gameover { top: 20vh; font-size: clamp(22px, 4vw, 42px); }
   .hud { top: 10px; width: 100%; transform: none; left: 0; display:flex; justify-content: space-between; padding: 0 12px; }
 
-  /* FIX: center gold */
+  /* HUD: center gold */
   #gold {
     position: absolute;
     top: 0;
     left: 50%;
     transform: translateX(-50%);
     z-index: 6;
-    font-size: 18px; /* keep your size */
+    font-size: 18px;
     pointer-events: none;
   }
 
@@ -113,7 +113,7 @@ function resize() {
   W = canvas.width  = Math.floor(window.innerWidth);
   H = canvas.height = Math.floor(window.innerHeight);
   ctx.imageSmoothingEnabled = false;
-  buildStaticMap(); // rebuild current world map
+  buildStaticMap(); // rebuild current world map (same world)
 }
 window.addEventListener("resize", resize);
 
@@ -206,7 +206,6 @@ function drawGrassWorld() {
   // Door appears after quest accepted (baked when map is built, e.g., after resize)
   door.visible = questAccepted;
   if (door.visible) {
-    // place near top-right area
     door.x = Math.floor(W - 120);
     door.y = Math.floor(80);
     drawDoor(mapCtx, door.x, door.y, door.w, door.h);
@@ -329,22 +328,21 @@ const swordBlade = "#cfd7df";
 const swordEdge  = "#ffffff";
 const swordHilt  = "#8b6a2b";
 
-// ====== Sword anim config ======
-const swingFrames = 4;
-const swingDuration = 0.22; // sec
-const swingCooldown = 0.28; // sec (from start)
-let swingTimer = 0;   // time since swing started
-let canSwingAt = 0;   // timestamp allowed
+// ====== Sword anim config (Terraria-like) ======
+const swingDuration = 0.28; // seconds, visible swing
+const swingCooldown = 0.34; // seconds (from start)
+let swingTimer = 0;         // time since swing started (0 when idle)
+let canSwingAt = 0;         // timestamp allowed
 
-// Build Ana frames (0 idle + 4 walk) per dir, sword always in-hand
+// Build Ana frames (NO sword baked in; we render sword separately now)
 const anaFrames = [[],[],[],[]]; // [dir][0..4]
 for (let dir = 0; dir < 4; dir++) {
   for (let f = 0; f < 5; f++) {
-    anaFrames[dir][f] = makeFrame((g) => drawCharacter(g, dir, f, "ana", true, 0));
+    anaFrames[dir][f] = makeFrame((g) => drawCharacter(g, dir, f, "ana", false, 0));
   }
 }
 
-// Build Silvio (taller, a bit muscular). We'll draw with same 16x24 base but scale a bit larger at render.
+// Build Silvio
 const silvioFrames = [[],[],[],[]];
 for (let dir = 0; dir < 4; dir++) {
   for (let f = 0; f < 5; f++) {
@@ -355,10 +353,10 @@ for (let dir = 0; dir < 4; dir++) {
 /**
  * drawCharacter(g, dir, frameIndex, who, withSword, swingPhaseIndex)
  * who: "ana" | "silvio"
- * withSword: boolean (always true for Ana render, false for Silvio)
- * swingPhaseIndex: 0..3 only used when drawing sword swing frames
+ * withSword: (unused now; sword drawn separately)
+ * swingPhaseIndex: kept for compatibility (unused)
  */
-function drawCharacter(g, dir, frameIndex, who="ana", withSword=true, swingPhaseIndex=0) {
+function drawCharacter(g, dir, frameIndex, who="ana", withSword=false, swingPhaseIndex=0) {
   g.clearRect(0,0,BASE_W,BASE_H);
 
   // Walk offsets
@@ -424,7 +422,6 @@ function drawCharacter(g, dir, frameIndex, who="ana", withSword=true, swingPhase
     if (dir === 3) { p(g, headX+2, headTop+3, eyes); p(g, headX+5, headTop+3, eyes); }
     else { p(g, headX+2, headTop+4, eyes); p(g, headX+5, headTop+4, eyes); p(g, headX+3, headTop+6, "#aa6a6a"); }
     if (who === "ana" && dir !== 3) {
-      // tiny round glasses (2px radius hint)
       p(g, headX+1, headTop+3, "#000000");
       p(g, headX+6, headTop+3, "#000000");
       p(g, headX+3, headTop+4, "#000000"); // bridge dot
@@ -467,41 +464,6 @@ function drawCharacter(g, dir, frameIndex, who="ana", withSword=true, swingPhase
 
   // Directional extra
   if (dir === 3) p(g, bodyX+3, bodyTop, who==="silvio" ? "#2e6cd0" : "#25a048");
-
-  // Sword (always in-hand for Ana)
-  if (withSword && who==="ana") {
-    drawSwordInHand(g, dir, swingPhaseIndex);
-  }
-}
-
-function drawSwordInHand(g, dir, swingPhase) {
-  // Simple placement: near right hand (or left if facing left), animate a little during swing.
-  // Coordinates relative to the 16x24 base.
-  // Base handle point positions by dir:
-  let hx, hy, angle = 0;
-  if (dir === 0) { hx = 12; hy = 16; angle = 0.2; }
-  else if (dir === 1) { hx = 2; hy = 16; angle = -1.0; }
-  else if (dir === 2) { hx = 13; hy = 16; angle = 1.0; }
-  else { hx = 11; hy = 12; angle = -0.2; }
-
-  // add swing arc
-  if (swingTimer > 0) {
-    const t = Math.min(1, swingTimer / swingDuration);
-    // swingPhase: 0..3 – move angle over time
-    const swingAngles = [0.6, 0.2, -0.2, -0.6];
-    angle += swingAngles[Math.min(3, Math.floor(t * 4))];
-  }
-
-  // Draw a tiny sword using rotation around (hx,hy)
-  g.save();
-  g.translate(hx, hy);
-  g.rotate(angle);
-  // hilt
-  p(g, -1, 0, swordHilt); p(g, 0, 0, swordHilt);
-  // blade
-  p(g, 1, -1, swordBlade); p(g, 2, -2, swordBlade); p(g, 3, -3, swordEdge);
-  p(g, 1, -2, swordBlade); p(g, 2, -3, swordEdge);
-  g.restore();
 }
 
 /* =========================
@@ -518,7 +480,7 @@ const player = {
   gold: 0,
 };
 
-// Silvio NPC (top-right area, not exact corner)
+// Silvio NPC (MIDDLE-LEFT placement)
 const silvio = {
   x: 0, y: 0,
   w: DRAW_W*1.1, h: DRAW_H*1.1,
@@ -526,7 +488,7 @@ const silvio = {
   talkable: true
 };
 
-// Zombies only in snow world
+/* Enemies & pickups */
 const zombies = [];
 const coins = []; // gold drops
 
@@ -546,7 +508,7 @@ function tryMove(dt, dx, dy) {
       const feetX = { x: testX.x + player.w*0.25, y: testX.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
       if (!rectsOverlap(feetX, s)) { player.x += dx; return; }
       const testY = { x: player.x, y: player.y + dy, w: player.w, h: player.h };
-      const feetY = { x: testY.x + player.w*0.25, y: testY.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
+      const feetY = { x: testY.x + player.w*0.25, y: testY.y + player.h*0.65, w: player.w*0.5, h: player.w*0.3 };
       if (!rectsOverlap(feetY, s)) { player.y += dy; return; }
       return;
     }
@@ -586,28 +548,23 @@ function updateDialog(dt) {
   if (!dialogActive) return;
   dialogTimer += dt;
   if (dialogPhase === 0 && dialogTimer >= 1.2) {
-    // after a moment, show continue hint
     dialogPhase = 1;
     dialogEl.textContent = "Silvio: “Will you accept my quest my love?”  (Press Space to continue)";
   }
-  // When space pressed and allowed -> close
   if (dialogPhase === 1 && (keys.has(' ') || keys.has('space'))) {
     dialogActive = false;
     hideDialog();
     questAccepted = true;
 
-    // ***** FIX: Don't rebuild the map here (that caused random re-rolls)
-    // Just reveal the door on the existing map so nothing shifts.
+    // FIX: Do not rebuild map here (this used to re-roll grass)
     door.visible = true;
     door.x = Math.floor(W - 120);
     door.y = Math.floor(80);
-    // (No buildStaticMap() call)
   }
 }
 
 function setHUD() {
   hudEl.style.display = 'flex';
-  // hearts
   const full = "❤", empty = "♡";
   heartsEl.style.fontSize = "18px";
   heartsEl.textContent = full.repeat(player.hearts) + empty.repeat(Math.max(0, 3 - player.hearts));
@@ -617,7 +574,6 @@ function showGameOver() {
   gameoverEl.style.display = 'block';
 }
 restartBtn.addEventListener('click', () => {
-  // reset everything
   player.x = (W - DRAW_W)/2;
   player.y = (H - DRAW_H)/2;
   player.hearts = 3; player.gold = 0; player.invuln = 0;
@@ -629,11 +585,11 @@ restartBtn.addEventListener('click', () => {
 });
 
 /* =========================
-   NPC placement (top-right area)
+   NPC placement (MIDDLE-LEFT)
    ========================= */
 function placeSilvio() {
-  silvio.x = Math.floor(W - 240);
-  silvio.y = Math.floor(120);
+  silvio.x = 80;                                  // near left edge
+  silvio.y = Math.floor(H/2 - (DRAW_H*1.1)/2);    // vertically centered
 }
 
 /* =========================
@@ -650,7 +606,6 @@ function spawnZombie() {
 }
 
 function updateZombies(dt) {
-  // Spawn logic
   if (world === "snow" && zombies.length < 6) {
     if (Math.random() < 0.02) spawnZombie();
   }
@@ -678,8 +633,7 @@ function updateZombies(dt) {
       if (rectsOverlap(feetP, zBox)) {
         player.hearts -= 1;
         player.invuln = 1.0;
-        // knockback
-        player.x -= vx * 30; player.y -= vy * 30;
+        player.x -= vx * 30; player.y -= vy * 30; // knockback
         if (player.hearts <= 0) {
           running = false;
           showGameOver();
@@ -692,7 +646,6 @@ function updateZombies(dt) {
 function renderZombies() {
   for (const z of zombies) {
     if (!z.alive) continue;
-    // reuse silvio/ana frame style for zombie look (tinted)
     const img = anaFrames[z.dir][z.frame];
     ctx.save();
     ctx.globalAlpha = 0.95;
@@ -702,13 +655,9 @@ function renderZombies() {
   }
 }
 
-/* FIX: coins stay where zombie died */
-function dropCoin(x, y) {
-  // Spawn a static coin exactly at the death position.
-  coins.push({x, y, r: 8});
-}
+/* Coins stay where zombie died */
+function dropCoin(x, y) { coins.push({x, y, r: 8}); }
 function updateCoins(dt) {
-  // Static coins: no gravity, no movement — just check pickup.
   for (let i = coins.length - 1; i >= 0; i--) {
     const c = coins[i];
     if (circleHit(c.x, c.y, player.x+DRAW_W/2, player.y+DRAW_H*0.8, 24)) {
@@ -727,19 +676,72 @@ function renderCoins() {
 }
 
 /* =========================
-   Sword hit detection
+   TERRARIA-LIKE SWORD
    ========================= */
-function swordActive() {
-  return swingTimer > 0 && (swingTimer / swingDuration) >= 0.15; // activate after a small delay
+function isSwinging() { return swingTimer > 0; }
+function swordProgress() { return Math.min(1, swingTimer / swingDuration); }
+
+// where the player holds the sword (per dir)
+function getHandAnchor(dir) {
+  // return offset relative to player.x/y
+  const baseX = player.x + DRAW_W/2;
+  const baseY = player.y + DRAW_H*0.72;
+  if (dir === 0) return {x: baseX, y: baseY};              // down
+  if (dir === 1) return {x: baseX - 10, y: baseY - 6};     // left
+  if (dir === 2) return {x: baseX + 10, y: baseY - 6};     // right
+  return {x: baseX, y: baseY - 18};                        // up
 }
+
+// swing arc angles by direction
+function swingAnglesForDir(dir) {
+  // Start & end angles create a ~160-180° arc
+  if (dir === 0) return {start: Math.PI*0.15, end: Math.PI*0.85};     // down
+  if (dir === 1) return {start: Math.PI*1.05, end: Math.PI*1.95};     // left
+  if (dir === 2) return {start: Math.PI*1.95, end: Math.PI*0.05};     // right
+  return {start: -Math.PI*0.85, end: -Math.PI*0.15};                   // up
+}
+
+function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); } // nicer motion
+
+function drawSword(ctx, px, py, dir, t) {
+  const {start, end} = swingAnglesForDir(dir);
+  const eased = easeOutCubic(t);
+  // Interpolate primary arc
+  // Handle slight overshoot at the end for snap
+  const overshoot = 0.08;
+  const angle = start + (end - start) * Math.min(1, eased + overshoot*(eased));
+
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(angle);
+
+  // blade (length ~40)
+  ctx.fillStyle = swordBlade;
+  ctx.fillRect(0, -2, 40, 4);
+  ctx.fillStyle = swordEdge;
+  ctx.fillRect(36, -3, 4, 6);
+
+  // crossguard / hilt
+  ctx.fillStyle = swordHilt;
+  ctx.fillRect(-6, -3, 6, 6);
+  ctx.fillRect(-8, -7, 4, 14);
+
+  ctx.restore();
+}
+
+// Hit detection that follows the same arc center
 function hitZombiesWithSword() {
-  if (!swordActive()) return;
-  // arc center near player's hand depending on dir
-  let cx = player.x + DRAW_W/2, cy = player.y + DRAW_H*0.75;
-  let nx=0, ny=0; // forward vector
-  if (player.dir===0){ ny=1; } else if (player.dir===1){ nx=-1; } else if (player.dir===2){ nx=1; } else { ny=-1; }
-  cx += nx*30; cy += ny*30;
-  const r = 38; // hit radius
+  if (!isSwinging()) return;
+  const t = swordProgress();
+  const hand = getHandAnchor(player.dir);
+  // approximate a sweep arc by checking a forward point along the current angle
+  const {start, end} = swingAnglesForDir(player.dir);
+  const angle = start + (end - start) * t;
+  const reach = 36; // radius from hand
+  const cx = hand.x + Math.cos(angle) * reach;
+  const cy = hand.y + Math.sin(angle) * reach;
+  const r = 32; // hit radius
+
   for (const z of zombies) {
     if (!z.alive) continue;
     const zx = z.x + DRAW_W/2, zy = z.y + DRAW_H*0.75;
@@ -747,7 +749,7 @@ function hitZombiesWithSword() {
       z.hp -= 1;
       if (z.hp <= 0) {
         z.alive = false;
-        dropCoin(zx, zy-10); // stays right here now
+        dropCoin(zx, zy-10);
       }
     }
   }
@@ -782,11 +784,12 @@ function update(dt) {
   } else { player.animTime = 0; player.frame = 0; }
 
   // sword swing input (space)
-  if ((keys.has(' ') || keys.has('space')) && performance.now()/1000 >= canSwingAt) {
-    swingTimer = 0.0001; // start
-    canSwingAt = performance.now()/1000 + swingCooldown;
+  const now = performance.now()/1000;
+  if ((keys.has(' ') || keys.has('space')) && now >= canSwingAt) {
+    swingTimer = 0.0001; // start swing
+    canSwingAt = now + swingCooldown;
   }
-  if (swingTimer > 0) {
+  if (isSwinging()) {
     swingTimer += dt;
     hitZombiesWithSword();
     if (swingTimer >= swingDuration) swingTimer = 0;
@@ -834,7 +837,7 @@ function render() {
   // draw map
   ctx.drawImage(mapBuffer, 0, 0);
 
-  // draw door (keep as a dynamic overlay so we can reveal it without rebuilding the map)
+  // draw door (dynamic overlay so we can reveal it without rebuilding the map)
   if (world === "grass" && door.visible) {
     drawDoor(ctx, door.x, door.y, door.w, door.h);
   }
@@ -844,10 +847,8 @@ function render() {
     const imgS = silvioFrames[silvio.dir][silvio.frame];
     ctx.save();
     ctx.imageSmoothingEnabled = false;
-    // make Silvio a tad larger
     const sw = Math.floor(DRAW_W*1.1), sh = Math.floor(DRAW_H*1.1);
     ctx.drawImage(imgS, 0,0, BASE_W, BASE_H, Math.round(silvio.x), Math.round(silvio.y), sw, sh);
-    // name + question mark
     ctx.fillStyle = "#fff"; ctx.font = "16px monospace"; ctx.textAlign = "center";
     ctx.fillText("Silvio", Math.round(silvio.x + sw/2), Math.round(silvio.y - 10));
     ctx.fillText("?", Math.round(silvio.x + sw/2), Math.round(silvio.y - 26));
@@ -860,7 +861,7 @@ function render() {
     renderCoins();
   }
 
-  // draw player (with sword always in-hand & swing frames)
+  // draw player
   const img = anaFrames[player.dir][player.frame];
   ctx.save();
   ctx.imageSmoothingEnabled = false;
@@ -870,20 +871,22 @@ function render() {
     ctx.globalAlpha = 0.5;
   }
 
-  // Re-render the character base first
   ctx.drawImage(img, 0,0, BASE_W, BASE_H, Math.round(player.x), Math.round(player.y), DRAW_W, DRAW_H);
 
-  // swing trail for visual feedback
-  if (swingTimer > 0) {
-    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+  // draw sword only while swinging (Terraria style)
+  if (isSwinging()) {
+    const t = swordProgress();
+    const hand = getHandAnchor(player.dir);
+    drawSword(ctx, hand.x, hand.y, player.dir, t);
+    // optional swing trail for extra feedback
+    ctx.strokeStyle = "rgba(255,255,255,0.4)";
     ctx.lineWidth = 2;
-    const cx = player.x + DRAW_W/2;
-    const cy = player.y + DRAW_H*0.75;
+    const {start, end} = swingAnglesForDir(player.dir);
+    const angle = start + (end - start) * t;
+    const cx = hand.x + Math.cos(angle) * 36;
+    const cy = hand.y + Math.sin(angle) * 36;
     ctx.beginPath();
-    if (player.dir===0) { ctx.arc(cx, cy, 30, Math.PI*0.1, Math.PI*0.9); }
-    if (player.dir===1) { ctx.arc(cx, cy, 30, Math.PI*1.1, Math.PI*1.9); }
-    if (player.dir===2) { ctx.arc(cx, cy, 30, Math.PI*1.9, Math.PI*0.1, true); }
-    if (player.dir===3) { ctx.arc(cx, cy, 30, -Math.PI*0.9, -Math.PI*0.1); }
+    ctx.arc(hand.x, hand.y, 36, start, angle, start > angle);
     ctx.stroke();
   }
 
