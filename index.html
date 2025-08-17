@@ -174,10 +174,10 @@ const outfitMain="#1f8a3c",outfitShadow="#166a2e",boots="#4b3928",belt="#2e2e2e"
 const outfitMainSilvio="#2c57b4",outfitShadowSilvio="#223f82",hairSilvio="#4b3420";
 const swordBlade="#cfd7df",swordEdge="#ffffff",swordHilt="#8b6a2b";
 
-/* Zombie palette */
-const zombieSkin="#9bb6a3",zombieEyes="#ffffff",zombieOutfit="#4a4a4a",zombiePants="#2a2a2a";
+/* Zombie palette (scarier look) */
+const zombieSkin="#6b7c6b", zombieEyes="#ff0000", zombieOutfit="#3a3a3a", zombiePants="#1a1a1a";
 
-/* === Build Ana (player) frames === */
+/* === Build Ana frames === */
 const anaFrames=[[],[],[],[]];
 for(let dir=0;dir<4;dir++){for(let f=0;f<5;f++){anaFrames[dir][f]=makeFrame(g=>drawAna(g,dir,f));}}
 function drawAna(g,dir,frameIndex){
@@ -199,7 +199,7 @@ function drawAna(g,dir,frameIndex){
   p(g,bodyX+5,bodyTop+7+offs.legR,boots);
 }
 
-/* === Build Silvio frames (blue outfit, brown hair) === */
+/* === Build Silvio frames === */
 const silvioFrames=[[],[],[],[]];
 for(let dir=0;dir<4;dir++){for(let f=0;f<5;f++){silvioFrames[dir][f]=makeFrame(g=>drawSilvio(g,dir,f));}}
 function drawSilvio(g,dir,frameIndex){
@@ -217,7 +217,7 @@ function drawSilvio(g,dir,frameIndex){
   p(g,bodyX+5,bodyTop+7,boots);
 }
 
-/* === Build Zombie frames (unique undead look) === */
+/* === Build Zombie frames (scarier undead) === */
 const zombieFrames=[[],[],[],[]];
 for(let dir=0;dir<4;dir++){for(let f=0;f<5;f++){zombieFrames[dir][f]=makeFrame(g=>drawZombie(g,dir,f));}}
 function drawZombie(g,dir,frameIndex){
@@ -239,7 +239,7 @@ function drawZombie(g,dir,frameIndex){
 const player={x:0,y:0,dir:0,frame:0,frameTick:0,speed:3,hp:3,maxHp:3,gold:0};
 const silvio={x:0,y:0,dir:1,frame:0};
 function placeSilvio(){
-  silvio.x=80; // middle-left
+  silvio.x=80;
   silvio.y=Math.floor(H/2 - DRAW_H/2);
 }
 let zombies=[],coins=[];
