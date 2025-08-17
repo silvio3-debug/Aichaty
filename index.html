@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Pixel Adventure</title>
+<title>Game for Princess</title>
 <style>
   html, body {
     margin: 0;
@@ -76,7 +76,7 @@
 <canvas id="game"></canvas>
 
 <div id="startOverlay">
-  <div id="title">Pixel Adventure</div>
+  <div id="title">Game for Princess</div>
   <button id="startBtn">Start Game</button>
 </div>
 
@@ -162,6 +162,7 @@ function drawDungeon(g){
     g.fillRect(x,y,s,s);solidRects.push({x,y,w:s,h:s});
   }
 }
+
 /* === Character sprite builders === */
 const BASE_W = 16, BASE_H = 24, SCALE = 4, DRAW_W = BASE_W*SCALE, DRAW_H = BASE_H*SCALE;
 function makeFrame(drawFn){const c=document.createElement("canvas");c.width=BASE_W;c.height=BASE_H;const g=c.getContext("2d");drawFn(g);return c;}
@@ -242,7 +243,6 @@ function placeSilvio(){
   silvio.y=Math.floor(H/2 - DRAW_H/2);
 }
 let zombies=[],coins=[];
-
 /* === Sword swing animation (Terraria style) === */
 let swingTimer=0,swingDuration=12;
 function drawSword(ctx,px,py,dir,t){
@@ -259,6 +259,7 @@ function drawSword(ctx,px,py,dir,t){
   ctx.fillStyle=swordHilt;ctx.fillRect(-6,-3,6,6);
   ctx.restore();
 }
+
 /* === Collisions & movement === */
 function rectsOverlap(a,b){return !(a.x+a.w<=b.x||a.x>=b.x+b.w||a.y+a.h<=b.y||a.y>=b.y+b.h);}
 function circleHit(ax,ay,bx,by,r){const dx=ax-bx,dy=ay-by;return (dx*dx+dy*dy)<=r*r;}
@@ -266,15 +267,11 @@ function circleHit(ax,ay,bx,by,r){const dx=ax-bx,dy=ay-by;return (dx*dx+dy*dy)<=
 function tryMove(dx,dy){
   const feet={x:player.x+DRAW_W*0.25,y:player.y+DRAW_H*0.65,w:DRAW_W*0.5,h:DRAW_H*0.3};
   const nextFeet={x:feet.x+dx,y:feet.y+dy,w:feet.w,h:feet.h};
-  // keep inside screen
   if(nextFeet.x<0||nextFeet.y<0||nextFeet.x+nextFeet.w>W||nextFeet.y+nextFeet.h>H) return;
-  // collide with solids
   for(const s of solidRects){
     if(rectsOverlap(nextFeet,s)){
-      // try slide on X
       const feetX={...feet,x:feet.x+dx};
       if(!rectsOverlap(feetX,s)){player.x+=dx;return;}
-      // try slide on Y
       const feetY={...feet,y:feet.y+dy};
       if(!rectsOverlap(feetY,s)){player.y+=dy;return;}
       return;
@@ -299,24 +296,23 @@ function hidePrompt(){promptEl.style.display='none';}
 function showDialog(t){dialogEl.textContent=t;dialogEl.style.display='block';}
 function hideDialog(){dialogEl.style.display='none';}
 
-/* === HUD === */
 function setHUD(){
   const full="❤",empty="♡";
   heartsEl.textContent=full.repeat(player.hp)+empty.repeat(Math.max(0,player.maxHp-player.hp));
   goldEl.textContent="Gold: "+player.gold;
 }
 
-/* === Door drawing (to dungeon) === */
+/* === Door drawing === */
 function drawDoor(g,x,y,w,h){
   g.fillStyle="#6b4a2b";g.fillRect(x,y,w,h);
   g.fillStyle="#8a663c";g.fillRect(x+4,y+4,w-8,h-8);
   g.fillStyle="#2a241f";g.fillRect(x+w/2-2,y+h-14,4,8);
 }
 
-/* === Dialog / quest acceptance === */
-let dialogActive=false, dialogStep=0;
+/* === Dialog === */
+let dialogActive=false;
 function startDialog(){
-  dialogActive=true; dialogStep=0;
+  dialogActive=true;
   showDialog('Silvio: "Will you accept my quest my love?"  (Press Space)');
 }
 function updateDialog(){
@@ -324,7 +320,6 @@ function updateDialog(){
   if(keys.has(' ')||keys.has('space')){
     dialogActive=false; hideDialog();
     questAccepted=true;
-    // do NOT rebuild the map here (prevents grass from regenerating)
     door.visible=true;
     door.x=W-120; door.y=80;
   }
@@ -334,10 +329,10 @@ function updateDialog(){
 function getHandAnchor(dir){
   const baseX=player.x+DRAW_W/2;
   const baseY=player.y+DRAW_H*0.72;
-  if(dir===0) return {x:baseX,y:baseY};            // down
-  if(dir===1) return {x:baseX-10,y:baseY-6};       // left
-  if(dir===2) return {x:baseX+10,y:baseY-6};       // right
-  return {x:baseX,y:baseY-18};                     // up
+  if(dir===0) return {x:baseX,y:baseY};
+  if(dir===1) return {x:baseX-10,y:baseY-6};
+  if(dir===2) return {x:baseX+10,y:baseY-6};
+  return {x:baseX,y:baseY-18};
 }
 function swingProgress(){return Math.min(1, swingTimer/ swingDuration);}
 
@@ -353,21 +348,16 @@ function updateZombies(){
     const dx=(player.x - z.x), dy=(player.y - z.y);
     const d=Math.hypot(dx,dy)||1;
     const vx=dx/d, vy=dy/d;
-    z.x += vx * z.speed * 2.5; // shuffle
+    z.x += vx * z.speed * 2.5;
     z.y += vy * z.speed * 2.5;
-
-    // face direction
     if(Math.abs(vx)>Math.abs(vy)) z.dir=(vx<0)?1:2; else z.dir=(vy<0)?3:0;
-
     z.animTime += 0.18;
     z.frame = 1 + (Math.floor(z.animTime)%4);
-
-    // contact damage (simple feet boxes)
     const feetP={x:player.x+DRAW_W*0.25,y:player.y+DRAW_H*0.65,w:DRAW_W*0.5,h:DRAW_H*0.3};
     const feetZ={x:z.x+DRAW_W*0.25,y:z.y+DRAW_H*0.65,w:DRAW_W*0.5,h:DRAW_H*0.3};
     if(rectsOverlap(feetP,feetZ) && dmgCooldown<=0){
       player.hp=Math.max(0,player.hp-1);
-      dmgCooldown=45; // frames of i-frames
+      dmgCooldown=45;
       if(player.hp<=0){ gameOver(); }
     }
   }
@@ -381,24 +371,20 @@ function updateCoins(){
   }
 }
 
-/* === Sword hit detection along the swing arc === */
+/* === Sword hit detection === */
 function hitZombiesWithSword(){
   if(swingTimer===0) return;
   const t=Math.min(1,swingTimer/swingDuration);
   const hand=getHandAnchor(player.dir);
-
-  // Same angle as drawSword()
   let startAngle,endAngle;
   if(player.dir===0){startAngle=Math.PI*0.2;endAngle=Math.PI*0.8;}
   if(player.dir===1){startAngle=Math.PI*1.1;endAngle=Math.PI*1.9;}
   if(player.dir===2){startAngle=Math.PI*1.9;endAngle=Math.PI*0.1;}
   if(player.dir===3){startAngle=-Math.PI*0.9;endAngle=-Math.PI*0.1;}
   const angle=startAngle+(endAngle-startAngle)*t;
-
   const reach=36;
   const cx=hand.x + Math.cos(angle)*reach;
   const cy=hand.y + Math.sin(angle)*reach;
-
   for(const z of zombies){
     if(!z.alive) continue;
     const zx=z.x + DRAW_W/2, zy=z.y + DRAW_H*0.75;
@@ -412,7 +398,6 @@ function hitZombiesWithSword(){
 /* === Input & player update === */
 let dmgCooldown=0;
 function updatePlayer(){
-  // movement
   let vx=0,vy=0;
   if(keys.has("arrowleft")||keys.has("a")){vx-=1; lastPressedDir='left';}
   if(keys.has("arrowright")||keys.has("d")){vx+=1; lastPressedDir='right';}
@@ -425,25 +410,19 @@ function updatePlayer(){
     tryMove(vx*player.speed*2.6, vy*player.speed*2.6);
     player.frameTick++; player.frame=1+((player.frameTick>>2)%4);
   }else{ player.frame=0; }
-
-  // start swing
   if((keys.has(' ')||keys.has('space')) && swingTimer===0){ swingTimer=1; }
-
-  // progress swing
   if(swingTimer>0){
     swingTimer++;
     hitZombiesWithSword();
     if(swingTimer> swingDuration){ swingTimer=0; }
   }
-
   if(dmgCooldown>0) dmgCooldown--;
 }
 
-/* === Door interaction & world switch === */
+/* === Door interaction === */
 function handleDoor(){
   if(world!=="grass" || !questAccepted || !door.visible) return;
-  drawDoor(ctx,door.x,door.y,door.w,door.h); // render on top of map
-  // interact
+  drawDoor(ctx,door.x,door.y,door.w,door.h);
   const feet={x:player.x+DRAW_W*0.25,y:player.y+DRAW_H*0.65,w:DRAW_W*0.5,h:DRAW_H*0.3};
   const doorBox={x:door.x,y:door.y,w:door.w,h:door.h};
   if(rectsOverlap(feet,doorBox)){
@@ -452,7 +431,6 @@ function handleDoor(){
       world="dungeon";
       zombies.length=0; coins.length=0;
       buildStaticMap();
-      // place player near bottom-left on entry
       player.x=80; player.y=H - DRAW_H - 80;
       hidePrompt();
     }
@@ -461,27 +439,17 @@ function handleDoor(){
 
 /* === Rendering === */
 function render(){
-  // map
   ctx.drawImage(mapBuffer,0,0);
-
-  // door (grass only)
   if(world==="grass" && questAccepted && door.visible){
     drawDoor(ctx,door.x,door.y,door.w,door.h);
   }
-
-  // Silvio (grass only)
   if(world==="grass"){
     const imgS=silvioFrames[1][0];
     ctx.drawImage(imgS,0,0,BASE_W,BASE_H,Math.round(silvio.x),Math.round(silvio.y),DRAW_W,DRAW_H);
     ctx.fillStyle="#fff";ctx.font="16px monospace";ctx.textAlign="center";
     ctx.fillText("Silvio",Math.round(silvio.x+DRAW_W/2),Math.round(silvio.y-10));
-    if(!questAccepted){
-      // floating '?'
-      ctx.fillText("?",Math.round(silvio.x+DRAW_W/2),Math.round(silvio.y-28));
-    }
+    if(!questAccepted){ ctx.fillText("?",Math.round(silvio.x+DRAW_W/2),Math.round(silvio.y-28)); }
   }
-
-  // dungeon mobs / coins
   if(world==="dungeon"){
     for(const z of zombies){ if(!z.alive) continue;
       const img=zombieFrames[z.dir][z.frame];
@@ -492,20 +460,15 @@ function render(){
       ctx.fillStyle="#fff3a0";ctx.fillRect(c.x-2,c.y-3,4,2);
     }
   }
-
-  // player
   const img=anaFrames[player.dir][player.frame];
   ctx.save();
   if(dmgCooldown>0 && (dmgCooldown%6<3)) ctx.globalAlpha=0.6;
   ctx.drawImage(img,0,0,BASE_W,BASE_H,Math.round(player.x),Math.round(player.y),DRAW_W,DRAW_H);
   ctx.restore();
-
-  // sword (only while swinging)
   if(swingTimer>0){
     const t=swingProgress();
     const hand=getHandAnchor(player.dir);
     drawSword(ctx,hand.x,hand.y,player.dir,t);
-    // simple trail
     ctx.strokeStyle="rgba(255,255,255,0.35)";
     ctx.lineWidth=2;
     let startAngle,endAngle;
@@ -516,8 +479,6 @@ function render(){
     const ang=startAngle+(endAngle-startAngle)*t;
     ctx.beginPath();ctx.arc(hand.x,hand.y,36,startAngle,ang,false);ctx.stroke();
   }
-
-  // player label
   ctx.fillStyle="#fff";ctx.font="18px monospace";ctx.textAlign="center";
   ctx.fillText("Ana",Math.round(player.x+DRAW_W/2),Math.round(player.y-10));
 }
@@ -533,13 +494,11 @@ let running=false, lastTs=0;
 function loop(ts){
   if(!running) return;
   const dt=(ts-lastTs)/1000||0; lastTs=ts;
-
   if(dialogActive){ updateDialog(); }
   else{
     updatePlayer();
     if(world==="dungeon"){ updateZombies(); updateCoins(); }
     if(world==="grass"){
-      // talk prompt near Silvio
       const px=player.x+DRAW_W/2, py=player.y+DRAW_H*0.8;
       const sx=silvio.x+DRAW_W/2, sy=silvio.y+DRAW_H*0.8;
       const near=Math.hypot(px-sx,py-sy)<120;
@@ -550,7 +509,6 @@ function loop(ts){
       handleDoor();
     }
   }
-
   setHUD();
   render();
   requestAnimationFrame(loop);
@@ -559,6 +517,7 @@ function loop(ts){
 /* === Start / Restart === */
 startBtn.addEventListener('click',()=>{
   startOverlay.style.display='none';
+  hudEl.style.display='flex';
   running=true; lastTs=performance.now();
   requestAnimationFrame(loop);
 });
@@ -578,66 +537,6 @@ player.x=(W-DRAW_W)/2;
 player.y=(H-DRAW_H)/2;
 buildStaticMap();
 setHUD();
-/* === Accessibility niceties (optional) === */
-window.addEventListener('blur',()=>{ /* keep running but you could pause if desired */ });
-window.addEventListener('contextmenu',(e)=>{ e.preventDefault(); });
-
-/* === Mobile touch (simple d-pad & attack) === */
-let touchMove = null;
-let attackTouch = false;
-
-function createTouchUI(){
-  const pad = document.createElement('div');
-  pad.style.position='fixed'; pad.style.left='16px'; pad.style.bottom='16px';
-  pad.style.width='120px'; pad.style.height='120px';
-  pad.style.borderRadius='12px'; pad.style.background='rgba(255,255,255,0.07)';
-  pad.style.backdropFilter='blur(2px)'; pad.style.zIndex='8';
-  pad.style.touchAction='none';
-  document.body.appendChild(pad);
-
-  const attack = document.createElement('div');
-  attack.style.position='fixed'; attack.style.right='16px'; attack.style.bottom='16px';
-  attack.style.width='88px'; attack.style.height='88px';
-  attack.style.borderRadius='50%'; attack.style.background='rgba(255,255,255,0.07)';
-  attack.style.backdropFilter='blur(2px)'; attack.style.zIndex='8';
-  attack.style.touchAction='none';
-  document.body.appendChild(attack);
-
-  function setMoveFromPoint(x,y){
-    const rect = pad.getBoundingClientRect();
-    const cx = rect.left + rect.width/2;
-    const cy = rect.top + rect.height/2;
-    const dx = x - cx;
-    const dy = y - cy;
-    const len = Math.hypot(dx,dy) || 1;
-    const nx = dx/len, ny = dy/len;
-    touchMove = {nx, ny};
-    // map to keys
-    if(Math.abs(nx)>Math.abs(ny)){
-      if(nx<0){ keys.add('a'); keys.delete('d'); } else { keys.add('d'); keys.delete('a'); }
-      keys.delete('w'); keys.delete('s');
-    }else{
-      if(ny<0){ keys.add('w'); keys.delete('s'); } else { keys.add('s'); keys.delete('w'); }
-      keys.delete('a'); keys.delete('d');
-    }
-  }
-  function clearMove(){
-    touchMove = null;
-    keys.delete('w');keys.delete('a');keys.delete('s');keys.delete('d');
-  }
-
-  pad.addEventListener('touchstart',e=>{ if(e.touches[0]) setMoveFromPoint(e.touches[0].clientX,e.touches[0].clientY); });
-  pad.addEventListener('touchmove',e=>{ if(e.touches[0]) setMoveFromPoint(e.touches[0].clientX,e.touches[0].clientY); });
-  pad.addEventListener('touchend',()=>{ clearMove(); });
-  pad.addEventListener('touchcancel',()=>{ clearMove(); });
-
-  function pressAttack(){ keys.add(' '); setTimeout(()=>keys.delete(' '), 40); }
-  attack.addEventListener('touchstart',()=>{ attackTouch=true; pressAttack(); });
-  attack.addEventListener('touchend',()=>{ attackTouch=false; });
-  attack.addEventListener('touchcancel',()=>{ attackTouch=false; });
-}
-
-if(/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)){ createTouchUI(); }
 
 </script>
 </body>
