@@ -12,6 +12,7 @@
     overflow: hidden;
     font-family: system-ui, sans-serif;
   }
+
   #game {
     display: block;
     width: 100vw;
@@ -20,6 +21,7 @@
     image-rendering: crisp-edges;
     background: #000; /* covered by map render */
   }
+
   /* Start overlay */
   #startOverlay {
     position: fixed;
@@ -36,6 +38,7 @@
     font-size: clamp(18px, 3vw, 32px);
     margin-bottom: 18px;
     letter-spacing: 1px;
+    text-align:center;
   }
   #startBtn {
     background:#fff;
@@ -48,16 +51,16 @@
   }
   #startBtn:active { transform: translateY(1px); }
 
-  /* Dialog / prompts */
-  .prompt, .dialog, .gameover, .hud {
+  /* Dialog / prompts / HUD (interactive overlays normally disabled) */
+  .prompt, .dialog, .hud {
     position: fixed; left: 50%; transform: translateX(-50%);
     color: #fff; text-align: center; font-weight: 600;
     text-shadow: 0 2px 0 rgba(0,0,0,.5);
-    pointer-events: none;
+    pointer-events: none; /* non-interactive informational overlays */
+    z-index: 6;
   }
   .prompt { bottom: 8vh; background: rgba(0,0,0,.45); padding: 8px 12px; border-radius: 8px; }
   .dialog { bottom: 12vh; width: min(92vw, 700px); background: rgba(0,0,0,.6); padding: 14px 16px; border-radius: 10px; }
-  .gameover { top: 20vh; font-size: clamp(22px, 4vw, 42px); }
   .hud { top: 10px; width: 100%; transform: none; left: 0; display:flex; justify-content: space-between; padding: 0 12px; }
 
   /* Center the gold text */
@@ -71,8 +74,34 @@
     pointer-events: none;
   }
 
+  /* Game Over (must be clickable) */
+  .gameover {
+    position: fixed;
+    inset: 0;
+    display:flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    color:#fff;
+    text-shadow: 0 2px 0 rgba(0,0,0,.5);
+    background: rgba(0,0,0,0.6);
+    font-size: clamp(22px, 4vw, 42px);
+    z-index: 10;
+    /* IMPORTANT FIX: make Game Over overlay interactive */
+    pointer-events: auto;
+  }
+  .gameover * { pointer-events: auto; } /* ensure children (button) get clicks */
+
   #restartBtn {
     margin-top: 16px; padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer;
+    font-size: clamp(14px, 2vw, 18px);
+    background:#fff; color:#000;
+  }
+  #restartBtn:active { transform: translateY(1px); }
+  #restartHint {
+    font-size: clamp(12px, 1.6vw, 14px);
+    margin-top: 8px;
+    opacity: .8;
   }
 </style>
 </head>
@@ -95,16 +124,19 @@
 <div class="prompt" id="prompt" style="display:none;"></div>
 <div class="dialog" id="dialog" style="display:none;"></div>
 
-<!-- Game Over -->
+<!-- Game Over (overlay is now truly clickable) -->
 <div class="gameover" id="gameover" style="display:none;">
-  <div>Game Over</div>
-  <button id="restartBtn">Restart</button>
+  <div style="text-align:center;">
+    <div>Game Over</div>
+    <button id="restartBtn" type="button" aria-label="Restart">Restart</button>
+    <div id="restartHint">Press R / Enter / Space to restart</div>
+  </div>
 </div>
 
 <script>
-/* =========================
+/* ==========================================================
    Basic engine + sizing
-   ========================= */
+   ========================================================== */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d", { alpha:false });
 let W = 0, H = 0;
@@ -113,38 +145,48 @@ function resize() {
   W = canvas.width  = Math.floor(window.innerWidth);
   H = canvas.height = Math.floor(window.innerHeight);
   ctx.imageSmoothingEnabled = false;
-  placeSilvio(); // keep Silvio at middle-left on resize
-  buildStaticMap(); // rebuild current world map
+  placeSilvio();      // keep Silvio at middle-left on resize
+  buildStaticMap();   // rebuild current world map
 }
 window.addEventListener("resize", resize);
 
-/* =========================
+/* ==========================================================
    Input handling
-   ========================= */
+   ========================================================== */
 const keys = new Set();
 let lastPressedDir = 'down';
+let allowRestartHotkeys = false; // becomes true when gameover is shown
+
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   const moveKeys = ["arrowup","arrowdown","arrowleft","arrowright","w","a","s","d"," "];
   if (moveKeys.includes(k)) e.preventDefault();
   keys.add(k);
+
+  // Convenience restart hotkeys when Game Over is visible
+  if (allowRestartHotkeys) {
+    if (k === 'r' || k === 'enter' || k === ' ') {
+      e.preventDefault();
+      performFullRestart();
+    }
+  }
 });
 window.addEventListener("keyup", (e) => {
   keys.delete(e.key.toLowerCase());
 });
 
-/* =========================
-   Random helpers
-   ========================= */
+/* ==========================================================
+   Helpers
+   ========================================================== */
 function rand(min, max) { return Math.random() * (max - min) + min; }
 function randi(min, max) { return Math.floor(rand(min, max)); }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a,b,t)=>a+(b-a)*t;
 const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
 
-/* =========================
+/* ==========================================================
    Worlds / map (static, full screen)
-   ========================= */
+   ========================================================== */
 let mapBuffer, mapCtx;
 let solidRects = []; // collision solids (e.g., trunks)
 let world = "grass"; // "grass" | "snow"
@@ -295,10 +337,10 @@ function drawDoor(g, x, y, w, h) {
   g.fillRect(x+w/2-2, y+h-14, 4, 8);
 }
 
-/* =========================
+/* ==========================================================
    Character sprite builders
    Terraria-ish 8-bit, 16x24 base, scaled x4
-   ========================= */
+   ========================================================== */
 const BASE_W = 16, BASE_H = 24;
 const SCALE = 4; // 16x24 -> 64x96 on screen
 const DRAW_W = BASE_W * SCALE;
@@ -333,7 +375,7 @@ const swordBlade = "#cfd7df";
 const swordEdge  = "#ffffff";
 const swordHilt  = "#8b6a2b";
 
-/* ====== Zombie palette (NEW) ====== */
+/* ====== Zombie palette ====== */
 const zSkin = "#9fb688";      // sickly green
 const zSkinShadow = "#7b8d6e";
 const zEye = "#cdecc4";       // pale glow
@@ -343,9 +385,9 @@ const zShirt = "#5e3e3e";     // torn maroon shirt
 const zShirtShadow = "#4a3030";
 const zBoots = "#3a2b22";
 
-/* =========================
-   Sword anim config (same as before)
-   ========================= */
+/* ==========================================================
+   Sword anim config
+   ========================================================== */
 const swingDuration = 0.32;
 const swingCooldown = 0.40;
 let swingTimer = 0;
@@ -354,9 +396,9 @@ let swingDir = 0;
 const swordTrail = [];
 const slashSprites = [];
 
-/* =========================
-   Build Ana frames (player)
-   ========================= */
+/* ==========================================================
+   Build frames
+   ========================================================== */
 const anaFrames = [[],[],[],[]]; // [dir][0..4]
 for (let dir = 0; dir < 4; dir++) {
   for (let f = 0; f < 5; f++) {
@@ -364,9 +406,6 @@ for (let dir = 0; dir < 4; dir++) {
   }
 }
 
-/* =========================
-   Build Silvio frames (NPC)
-   ========================= */
 const silvioFrames = [[],[],[],[]];
 for (let dir = 0; dir < 4; dir++) {
   for (let f = 0; f < 5; f++) {
@@ -374,9 +413,6 @@ for (let dir = 0; dir < 4; dir++) {
   }
 }
 
-/* =========================
-   Build Zombie frames (NEW)
-   ========================= */
 const zombieFrames = [[],[],[],[]];
 for (let dir = 0; dir < 4; dir++) {
   for (let f = 0; f < 5; f++) {
@@ -498,18 +534,15 @@ function drawCharacter(g, dir, frameIndex, who="ana", withSword=false, swingPhas
 
   // Directional extra
   if (dir === 3) p(g, bodyX+3, bodyTop, who==="silvio" ? "#2e6cd0" : "#25a048");
-
-  // (Sword drawn separately now)
 }
 
 /**
  * drawZombie(g, dir, frameIndex)
- * Visual: hunched, arms forward, torn shirt, patches, pale glow eyes
  */
 function drawZombie(g, dir, frameIndex) {
   g.clearRect(0,0,BASE_W,BASE_H);
 
-  // Slow, lurching offsets (exaggerate arms vs legs)
+  // Slow, lurching offsets
   const walkFrames = [
     {legL: -2, legR: 2, armL: 3, armR: 1},
     {legL: 0,  legR: 0, armL: 2, armR: 2},
@@ -528,15 +561,15 @@ function drawZombie(g, dir, frameIndex) {
   if (isIdle) {
     const ip = idlePose[dir];
     headY = ip.headY; bodyY = ip.bodyY;
-    armSwingL = ip.arm; armSwingR = ip.arm; // both forward a bit
+    armSwingL = ip.arm; armSwingR = ip.arm;
   } else {
     const w = walkFrames[(frameIndex-1) % 4];
     armSwingL = w.armL; armSwingR = w.armR;
     legSwingL = w.legL; legSwingR = w.legR;
   }
 
-  const headX = 3, headTop = 2 + headY; // 10x10 head block
-  const bodyTop = 12 + bodyY + 1;       // hunch
+  const headX = 3, headTop = 2 + headY;
+  const bodyTop = 12 + bodyY + 1; // hunch
   const bodyX = 3;
 
   // Back of head (ragged hair patches)
@@ -621,9 +654,9 @@ function drawZombie(g, dir, frameIndex) {
   })();
 }
 
-/* =========================
+/* ==========================================================
    Player / NPC / Combat entities
-   ========================= */
+   ========================================================== */
 const player = {
   x: 120, y: 120,
   w: DRAW_W, h: DRAW_H,
@@ -631,11 +664,10 @@ const player = {
   dir: 0, frame: 0, animTime: 0, animSpeed: 9,
   moving: false,
   hearts: 3,
-  invuln: 0, // seconds
+  invuln: 0, // seconds (i-frames after being hit)
   gold: 0,
 };
 
-// Silvio NPC (middle-left)
 const silvio = {
   x: 0, y: 0,
   w: DRAW_W*1.1, h: DRAW_H*1.1,
@@ -671,9 +703,9 @@ function tryMove(dt, dx, dy) {
   player.x = next.x; player.y = next.y;
 }
 
-/* =========================
+/* ==========================================================
    Prompts / dialog / overlays
-   ========================= */
+   ========================================================== */
 const promptEl = document.getElementById('prompt');
 const dialogEl = document.getElementById('dialog');
 const hudEl = document.getElementById('hud');
@@ -683,6 +715,7 @@ const gameoverEl = document.getElementById('gameover');
 const restartBtn = document.getElementById('restartBtn');
 
 let running = false;
+let dead = false;          // tracks if player is dead (prevents updates)
 let last = 0;
 let dialogActive = false;
 let dialogPhase = 0; // 0 showing text, 1 "press space to continue"
@@ -726,31 +759,71 @@ function setHUD() {
   goldEl.textContent = "Gold: " + player.gold;
 }
 function showGameOver() {
-  gameoverEl.style.display = 'block';
+  // Display overlay and enable hotkeys
+  allowRestartHotkeys = true;
+  dead = true;
+  running = false; // stop loop; we'll restart it on reset
+  gameoverEl.style.display = 'flex';
 }
-restartBtn.addEventListener('click', () => {
+
+/* ==========================================================
+   IMPORTANT FIX #1: Properly restart the game
+   - reset state
+   - hide overlay
+   - re-run the loop immediately
+   - clear keys and give short invulnerability on spawn
+   ========================================================== */
+function performFullRestart() {
+  // Base state
   player.x = (W - DRAW_W)/2;
   player.y = (H - DRAW_H)/2;
-  player.hearts = 3; player.gold = 0; player.invuln = 0;
-  questAccepted = true;
-  world = "grass";
-  zombies.length = 0; coins.length = 0;
+  player.hearts = 3;
+  player.gold = 0;
+  player.invuln = 1.2;       // grace on respawn
+  player.dir = 0; player.frame = 0; player.animTime = 0; player.moving = false;
+
+  // World state
+  questAccepted = true;      // keep door revealed so you can return to snow quickly if desired
+  world = "grass";           // respawn in grass
+  zombies.length = 0;
+  coins.length = 0;
+
+  // Rebuild map and HUD
   buildStaticMap();
+  setHUD();
+
+  // Hide overlays & flags
   gameoverEl.style.display = 'none';
+  allowRestartHotkeys = false;
+  dead = false;
+
+  // Clear all held keys to avoid accidental immediate actions
+  keys.clear();
+
+  // Restart the game loop
+  running = true;
+  last = performance.now();
+  requestAnimationFrame(loop);
+}
+
+/* Button click -> restart */
+restartBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  performFullRestart();
 });
 
-/* =========================
+/* ==========================================================
    NPC placement (middle-left)
-   ========================= */
+   ========================================================== */
 function placeSilvio() {
   // roughly middle-left of the screen, away from the door (top-right)
   silvio.x = Math.floor(W * 0.18);
   silvio.y = Math.floor(H * 0.45);
 }
 
-/* =========================
+/* ==========================================================
    Zombies & coins (snow world)
-   ========================= */
+   ========================================================== */
 function spawnZombie() {
   const z = {
     x: randi(40, W-40), y: randi(40, H-40),
@@ -768,6 +841,7 @@ function updateZombies(dt) {
   }
   for (const z of zombies) {
     if (!z.alive) continue;
+
     // chase with slight wobble
     const dx = (player.x - z.x), dy = (player.y - z.y);
     const d = Math.hypot(dx, dy) || 1;
@@ -785,7 +859,12 @@ function updateZombies(dt) {
     z.animTime += dt * 6.5;
     z.frame = 1 + (Math.floor(z.animTime) % 4);
 
-    // collide with player -> damage
+    // ======================================================
+    // IMPORTANT: Getting hit by zombie
+    // - Damage only when i-frames are not active
+    // - Apply a small knockback
+    // - Trigger Game Over once (with flags)
+    // ======================================================
     if (player.invuln <= 0) {
       const feetP = { x: player.x + player.w*0.25, y: player.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
       const zBox = { x: z.x + z.w*0.25, y: z.y + z.h*0.62, w: z.w*0.5, h: z.h*0.32 };
@@ -793,10 +872,14 @@ function updateZombies(dt) {
         // Damage + light knockback
         const kx = (dx/d), ky = (dy/d);
         player.hearts -= 1;
-        player.invuln = 1.0;
+        player.invuln = 1.0; // 1 second of invulnerability
         player.x -= kx * 30; player.y -= ky * 30;
-        if (player.hearts <= 0) {
-          running = false;
+
+        // Clamp to screen bounds after knockback
+        player.x = clamp(player.x, 0, W - player.w);
+        player.y = clamp(player.y, 0, H - player.h);
+
+        if (player.hearts <= 0 && !dead) {
           showGameOver();
         }
       }
@@ -840,9 +923,9 @@ function renderCoins() {
   }
 }
 
-/* =========================
+/* ==========================================================
    Sword math + VFX
-   ========================= */
+   ========================================================== */
 /* Hand anchor in world space */
 function handAnchor(dir) {
   // base near right hand
@@ -907,9 +990,9 @@ function updateVFX(dt) {
   }
 }
 
-/* =========================
+/* ==========================================================
    Sword hit detection
-   ========================= */
+   ========================================================== */
 function swordActive() {
   if (swingTimer <= 0) return false;
   const t = swingTimer / swingDuration;
@@ -933,11 +1016,12 @@ function hitZombiesWithSword() {
   }
 }
 
-/* =========================
+/* ==========================================================
    Game loop
-   ========================= */
+   ========================================================== */
 function update(dt) {
-  // dialog lock
+  // If dead or overlay dialog, limit updates
+  if (dead) return;
   if (dialogActive) { updateDialog(dt); return; }
 
   // movement
@@ -1003,6 +1087,7 @@ function update(dt) {
       buildStaticMap();
       // place player near bottom-left on entry
       player.x = 80; player.y = H - DRAW_H - 80;
+      player.invuln = 0.6; // brief entry grace
     }
   }
 
@@ -1150,21 +1235,22 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 
-/* =========================
+/* ==========================================================
    Start overlay
-   ========================= */
+   ========================================================== */
 const startOverlay = document.getElementById("startOverlay");
 document.getElementById("startBtn").addEventListener("click", () => {
   startOverlay.style.display = "none";
   running = true;
+  dead = false;
   last = performance.now();
   requestAnimationFrame(loop);
   hudEl.style.display = 'flex';
 });
 
-/* =========================
+/* ==========================================================
    Init
-   ========================= */
+   ========================================================== */
 resize();
 placeSilvio(); // ensure position before initial map
 player.x = (W - DRAW_W)/2;
@@ -1172,6 +1258,10 @@ player.y = (H - DRAW_H)/2;
 buildStaticMap();
 setHUD();
 
+/* ==========================================================
+   OPTIONAL: Pause focus handling (prevents stuck movement)
+   ========================================================== */
+window.addEventListener('blur', () => keys.clear());
 </script>
 </body>
 </html>
