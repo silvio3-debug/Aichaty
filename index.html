@@ -60,14 +60,14 @@
   .gameover { top: 20vh; font-size: clamp(22px, 4vw, 42px); }
   .hud { top: 10px; width: 100%; transform: none; left: 0; display:flex; justify-content: space-between; padding: 0 12px; }
 
-  /* FIX: center gold */
+  /* Center the gold text */
   #gold {
     position: absolute;
     top: 0;
     left: 50%;
     transform: translateX(-50%);
     z-index: 6;
-    font-size: 18px; /* keep your size */
+    font-size: 18px;
     pointer-events: none;
   }
 
@@ -104,7 +104,6 @@
 <script>
 /* =========================
    Basic engine + sizing
-   (source: your uploaded file)
    ========================= */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d", { alpha:false });
@@ -114,6 +113,7 @@ function resize() {
   W = canvas.width  = Math.floor(window.innerWidth);
   H = canvas.height = Math.floor(window.innerHeight);
   ctx.imageSmoothingEnabled = false;
+  placeSilvio(); // CHANGED: keep Silvio at middle-left on resize
   buildStaticMap(); // rebuild current world map
 }
 window.addEventListener("resize", resize);
@@ -138,6 +138,9 @@ window.addEventListener("keyup", (e) => {
    ========================= */
 function rand(min, max) { return Math.random() * (max - min) + min; }
 function randi(min, max) { return Math.floor(rand(min, max)); }
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a,b,t)=>a+(b-a)*t;
+const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
 
 /* =========================
    Worlds / map (static, full screen)
@@ -295,7 +298,6 @@ function drawDoor(g, x, y, w, h) {
 /* =========================
    Character sprite builders
    Terraria-ish 8-bit, 16x24 base, scaled x4
-   (source baseline from your file; unchanged)
    ========================= */
 const BASE_W = 16, BASE_H = 24;
 const SCALE = 4; // 16x24 -> 64x96 on screen
@@ -312,7 +314,7 @@ function makeFrame(drawFn) {
 }
 function p(g, x, y, color) { g.fillStyle = color; g.fillRect(x, y, 1, 1); }
 
-/* ====== Palettes for heroes (unchanged) ====== */
+// ====== Palettes ======
 const skin = "#f0c8a8";
 const hair = "#5a3a21";
 const hairHL = "#6b482b";
@@ -326,25 +328,34 @@ const outfitMainSilvio = "#2c57b4";  // blue
 const outfitShadowSilvio = "#223f82";
 const hairSilvio = "#4b3420";
 
-/* ====== Sword palette ====== */
+// Sword palette
 const swordBlade = "#cfd7df";
 const swordEdge  = "#ffffff";
 const swordHilt  = "#8b6a2b";
 
-/* ====== Sword anim config ====== */
-const swingFrames = 4;
-const swingDuration = 0.22; // sec
-const swingCooldown = 0.28; // sec (from start)
-let swingTimer = 0;   // time since swing started
-let canSwingAt = 0;   // timestamp allowed
+/* =========================
+   Sword anim config (CHANGED)
+   - smoother easing
+   - longer arc + better trail
+   - clearer hit window
+   ========================= */
+const swingDuration = 0.32; // sec (was 0.22)
+const swingCooldown = 0.40; // sec (from start)
+let swingTimer = 0;         // time since swing started (0..swingDuration)
+let canSwingAt = 0;         // timestamp allowed
+let swingDir = 0;           // dir captured at swing start
+const swordTrail = [];      // afterimages for juice
+const slashSprites = [];    // quick slash VFX
 
-/* ====== Build Ana/Silvio frames (original) ====== */
+// Build Ana frames (0 idle + 4 walk) per dir, sword drawn on top (we still keep a tiny in-hand for idle)
 const anaFrames = [[],[],[],[]]; // [dir][0..4]
 for (let dir = 0; dir < 4; dir++) {
   for (let f = 0; f < 5; f++) {
-    anaFrames[dir][f] = makeFrame((g) => drawCharacter(g, dir, f, "ana", true, 0));
+    anaFrames[dir][f] = makeFrame((g) => drawCharacter(g, dir, f, "ana", false, 0)); // withSword=false (we'll render sword separately)
   }
 }
+
+// Build Silvio
 const silvioFrames = [[],[],[],[]];
 for (let dir = 0; dir < 4; dir++) {
   for (let f = 0; f < 5; f++) {
@@ -355,8 +366,10 @@ for (let dir = 0; dir < 4; dir++) {
 /**
  * drawCharacter(g, dir, frameIndex, who, withSword, swingPhaseIndex)
  * who: "ana" | "silvio"
+ * withSword: kept for compatibility, we're rendering sword separately in render()
+ * swingPhaseIndex: kept for compatibility
  */
-function drawCharacter(g, dir, frameIndex, who="ana", withSword=true, swingPhaseIndex=0) {
+function drawCharacter(g, dir, frameIndex, who="ana", withSword=false, swingPhaseIndex=0) {
   g.clearRect(0,0,BASE_W,BASE_H);
 
   // Walk offsets
@@ -466,36 +479,7 @@ function drawCharacter(g, dir, frameIndex, who="ana", withSword=true, swingPhase
   // Directional extra
   if (dir === 3) p(g, bodyX+3, bodyTop, who==="silvio" ? "#2e6cd0" : "#25a048");
 
-  // Sword (always in-hand for Ana)
-  if (withSword && who==="ana") {
-    drawSwordInHand(g, dir, swingPhaseIndex);
-  }
-}
-
-function drawSwordInHand(g, dir, swingPhase) {
-  // Simple placement: near right hand (or left if facing left), animate a little during swing.
-  let hx, hy, angle = 0;
-  if (dir === 0) { hx = 12; hy = 16; angle = 0.2; }
-  else if (dir === 1) { hx = 2; hy = 16; angle = -1.0; }
-  else if (dir === 2) { hx = 13; hy = 16; angle = 1.0; }
-  else { hx = 11; hy = 12; angle = -0.2; }
-
-  if (swingTimer > 0) {
-    const t = Math.min(1, swingTimer / swingDuration);
-    const swingAngles = [0.6, 0.2, -0.2, -0.6];
-    angle += swingAngles[Math.min(3, Math.floor(t * 4))];
-  }
-
-  // Draw a tiny sword using rotation around (hx,hy)
-  g.save();
-  g.translate(hx, hy);
-  g.rotate(angle);
-  // hilt
-  p(g, -1, 0, swordHilt); p(g, 0, 0, swordHilt);
-  // blade
-  p(g, 1, -1, swordBlade); p(g, 2, -2, swordBlade); p(g, 3, -3, swordEdge);
-  p(g, 1, -2, swordBlade); p(g, 2, -3, swordEdge);
-  g.restore();
+  // (Sword drawn separately now)
 }
 
 /* =========================
@@ -512,7 +496,7 @@ const player = {
   gold: 0,
 };
 
-// Silvio NPC (top-right area, not exact corner)
+// Silvio NPC (CHANGED: middle-left)
 const silvio = {
   x: 0, y: 0,
   w: DRAW_W*1.1, h: DRAW_H*1.1,
@@ -537,7 +521,7 @@ function tryMove(dt, dx, dy) {
   for (const s of solidRects) {
     if (rectsOverlap(feet, s)) {
       const testX = { x: player.x + dx, y: player.y, w: player.w, h: player.h };
-      const feetX = { x: testX.x + player.w*0.25, y: testX.y + player.h*0.65, w: player.w*0.5, h: player.w*0.3 };
+      const feetX = { x: testX.x + player.w*0.25, y: testX.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
       if (!rectsOverlap(feetX, s)) { player.x += dx; return; }
       const testY = { x: player.x, y: player.y + dy, w: player.w, h: player.h };
       const feetY = { x: testY.x + player.w*0.25, y: testY.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
@@ -550,7 +534,6 @@ function tryMove(dt, dx, dy) {
 
 /* =========================
    Prompts / dialog / overlays
-   (from your file)
    ========================= */
 const promptEl = document.getElementById('prompt');
 const dialogEl = document.getElementById('dialog');
@@ -589,7 +572,7 @@ function updateDialog(dt) {
     hideDialog();
     questAccepted = true;
 
-    // Reveal door without rebuilding the whole map
+    // Reveal the door without rebuilding map
     door.visible = true;
     door.x = Math.floor(W - 120);
     door.y = Math.floor(80);
@@ -598,19 +581,19 @@ function updateDialog(dt) {
 
 function setHUD() {
   hudEl.style.display = 'flex';
-  // hearts
   const full = "❤", empty = "♡";
   heartsEl.style.fontSize = "18px";
   heartsEl.textContent = full.repeat(player.hearts) + empty.repeat(Math.max(0, 3 - player.hearts));
   goldEl.textContent = "Gold: " + player.gold;
 }
-function showGameOver() { gameoverEl.style.display = 'block'; }
+function showGameOver() {
+  gameoverEl.style.display = 'block';
+}
 restartBtn.addEventListener('click', () => {
-  // reset everything
   player.x = (W - DRAW_W)/2;
   player.y = (H - DRAW_H)/2;
   player.hearts = 3; player.gold = 0; player.invuln = 0;
-  questAccepted = true; // keep quest if died in snow so door remains available
+  questAccepted = true;
   world = "grass";
   zombies.length = 0; coins.length = 0;
   buildStaticMap();
@@ -618,173 +601,12 @@ restartBtn.addEventListener('click', () => {
 });
 
 /* =========================
-   NPC placement (top-right area)
+   NPC placement (CHANGED to middle-left)
    ========================= */
 function placeSilvio() {
-  silvio.x = Math.floor(W - 240);
-  silvio.y = Math.floor(120);
-}
-
-/* ============================================================
-   ZOMBIE SPRITES — real pixel zombies (new)
-   - 16x24 base like heroes, scaled x4
-   - 2 variants for variety
-   - 4 directions × 5 frames (0 idle + 4 walk)
-   ============================================================ */
-const Z_SKIN_OLIVE = "#9bb58a";
-const Z_SKIN_PALE  = "#b7c9c3";
-const Z_SKIN_SHADOW = "#6c7b6a";
-const Z_BLOOD_DARK = "#7a2a2a";
-const Z_BLOOD      = "#a53a3a";
-const Z_BONE       = "#eae6da";
-const Z_EYE        = "#1b1b1b";
-const Z_EYE_GLOW   = "#f1f5f0";
-const Z_CLOTH_TEAR = "#5a5a5a";
-const Z_SHIRT1     = "#577a4d";
-const Z_SHIRT1_SH  = "#3f5939";
-const Z_SHIRT2     = "#3f5a7a";
-const Z_SHIRT2_SH  = "#2c4057";
-const Z_PANTS      = "#38505a";
-const Z_PANTS_SH   = "#263740";
-const Z_BOOT       = "#3a2e28";
-const Z_TOOTH      = "#f6f2e6";
-
-const zombieFrames = [
-  // variant 0: rotted green
-  [[],[],[],[]],
-  // variant 1: pale blue-ish
-  [[],[],[],[]],
-];
-
-// build frames
-for (let variant=0; variant<2; variant++) {
-  for (let dir=0; dir<4; dir++) {
-    for (let f=0; f<5; f++) {
-      zombieFrames[variant][dir][f] = makeFrame((g)=>drawZombie(g, {dir, frame:f, variant}));
-    }
-  }
-}
-
-// helper to draw small mouth/jaw/teeth
-function zMouth(g, x0, y0, blood=false){
-  p(g, x0  , y0, Z_TOOTH);
-  p(g, x0+1, y0, Z_TOOTH);
-  p(g, x0+2, y0, Z_TOOTH);
-  if (blood){ p(g, x0+1, y0+1, Z_BLOOD); }
-}
-function zEye(g, x, y, glow=false){
-  p(g, x, y, Z_EYE);
-  if (glow) p(g, x, y-1, Z_EYE_GLOW);
-}
-
-function drawZombie(g, {dir, frame, variant}) {
-  g.clearRect(0,0,BASE_W,BASE_H);
-
-  const skinBase = (variant===0) ? Z_SKIN_OLIVE : Z_SKIN_PALE;
-  const shirt    = (variant===0) ? Z_SHIRT1 : Z_SHIRT2;
-  const shirtSh  = (variant===0) ? Z_SHIRT1_SH : Z_SHIRT2_SH;
-
-  // shambling offsets (more uneven than hero walk)
-  const shamble = [
-    {armL: 3, armR:-1, legL:-2, legR:2, head:0},
-    {armL: 1, armR: 0, legL: 0, legR:0, head:-1},
-    {armL:-1, armR: 1, legL: 2, legR:-2, head:0},
-    {armL: 0, armR: 0, legL: 0, legR:0, head:1},
-  ];
-  const idle = [{head:0},{head:-1},{head:0},{head:1}];
-  let armL=0, armR=0, legL=0, legR=0, headOff=0;
-  if (frame === 0){
-    headOff = idle[dir].head;
-  } else {
-    const s = shamble[(frame-1)%4];
-    armL=s.armL; armR=s.armR; legL=s.legL; legR=s.legR; headOff=s.head;
-  }
-
-  // anchors
-  const headX = 3, headTop = 2 + headOff;
-  const bodyX = 3, bodyTop = 12;
-  const legTop = bodyTop+7;
-
-  /* ----- Hairless/rotted head with exposed patches ----- */
-  // cranium/skin
-  for (let y=0; y<8; y++) for (let x=0; x<8; x++) p(g, headX+x, headTop+1+y, skinBase);
-  for (let x=headX+1; x<=headX+6; x++) p(g, x, headTop+9, skinBase);
-  // random rot patches / darker shadow
-  p(g, headX+1, headTop+2, Z_SKIN_SHADOW);
-  p(g, headX+6, headTop+3, Z_SKIN_SHADOW);
-  p(g, headX+2, headTop+5, Z_SKIN_SHADOW);
-  // exposed bone on side depending on direction
-  if (dir===1){ p(g, headX, headTop+3, Z_BONE); p(g, headX, headTop+4, Z_BONE); }
-  if (dir===2){ p(g, headX+7, headTop+3, Z_BONE); p(g, headX+7, headTop+4, Z_BONE); }
-
-  // eyes: one sunken, one glowing
-  if (dir===3){
-    zEye(g, headX+2, headTop+3, false);
-    zEye(g, headX+5, headTop+3, true);
-  } else {
-    zEye(g, headX+2, headTop+4, false);
-    zEye(g, headX+5, headTop+4, true);
-  }
-  // cracked brow
-  p(g, headX+1, headTop+2, Z_CLOTH_TEAR);
-
-  // mouth / teeth / drop of blood
-  zMouth(g, headX+2, headTop+7, frame!==0);
-
-  /* ----- Torso: torn shirt with shading ----- */
-  for (let y=0; y<6; y++){
-    for (let x=0; x<8; x++){
-      const c = (y>=2) ? shirtSh : shirt;
-      p(g, bodyX+x, bodyTop+y, c);
-    }
-  }
-  // tears in shirt show skin/bone
-  p(g, bodyX+1, bodyTop+2, Z_CLOTH_TEAR);
-  p(g, bodyX+2, bodyTop+3, skinBase);
-  p(g, bodyX+5, bodyTop+1, Z_CLOTH_TEAR);
-  p(g, bodyX+6, bodyTop+3, Z_BONE);
-
-  // belt-ish shadow cutoff
-  for (let x=bodyX; x<bodyX+8; x++) p(g, x, bodyTop+6, Z_PANTS);
-
-  /* ----- Arms: misaligned/uneven lengths with shamble offsets ----- */
-  const leftX  = bodyX-1, rightX = bodyX+8;
-  const armTop = bodyTop+1;
-  // sleeves
-  p(g, leftX,  armTop, shirt);
-  p(g, rightX, armTop, shirt);
-  let ly = armTop + Math.round(armL/2);
-  let ry = armTop + Math.round(armR/2);
-  // forearms (rotted)
-  p(g, leftX,  ly+1, skinBase); p(g, leftX,  ly+2, (variant===0)? Z_BLOOD_DARK : skinBase);
-  p(g, rightX, ry+1, skinBase); p(g, rightX, ry+2, (variant===0)? skinBase : Z_BLOOD);
-  // one hand missing chunk (bone)
-  if (dir!==2) p(g, leftX,  ly+3, Z_BONE);
-  if (dir!==1) p(g, rightX, ry+3, Z_BONE);
-
-  /* ----- Legs/boots: shredded pants with offsets ----- */
-  const mid = bodyX+3;
-  const lX = mid-2, rX = mid+2;
-  const lO = Math.round(legL/2);
-  const rO = Math.round(legR/2);
-
-  // upper legs (pants)
-  p(g, lX, legTop + lO, Z_PANTS_SH); p(g, lX, legTop+1 + lO, Z_PANTS_SH);
-  p(g, rX, legTop + rO, Z_PANTS_SH); p(g, rX, legTop+1 + rO, Z_PANTS_SH);
-  // torn knees
-  p(g, lX, legTop+2 + lO, Z_CLOTH_TEAR);
-  p(g, rX, legTop+2 + rO, Z_CLOTH_TEAR);
-
-  // boots / feet
-  p(g, lX, legTop+3 + lO, Z_BOOT); p(g, lX, legTop+4 + lO, Z_BOOT);
-  p(g, rX, legTop+3 + rO, Z_BOOT); p(g, rX, legTop+4 + rO, Z_BOOT);
-  // toe drag depending on dir
-  if (dir === 1) { p(g, lX-1, legTop+4 + lO, Z_BOOT); }
-  else if (dir === 2) { p(g, rX+1, legTop+4 + rO, Z_BOOT); }
-  else { p(g, lX, legTop+5 + lO, Z_BOOT); p(g, rX, legTop+5 + rO, Z_BOOT); }
-
-  /* ----- Directional grime highlight ----- */
-  if (dir === 3) p(g, bodyX+3, bodyTop, Z_BLOOD_DARK);
+  // roughly middle-left of the screen, away from the door (top-right)
+  silvio.x = Math.floor(W * 0.18);
+  silvio.y = Math.floor(H * 0.45);
 }
 
 /* =========================
@@ -795,8 +617,7 @@ function spawnZombie() {
     x: randi(40, W-40), y: randi(40, H-40),
     w: DRAW_W, h: DRAW_H,
     dir: 0, frame: 0, animTime: 0, speed: 80, alive: true, hitTimer: 0,
-    hp: 2,
-    variant: randi(0,2) // 0 or 1
+    hp: 2
   };
   zombies.push(z);
 }
@@ -823,17 +644,14 @@ function updateZombies(dt) {
     z.animTime += dt * 7;
     z.frame = 1 + (Math.floor(z.animTime) % 4);
 
-    // hit flash timer decay
-    if (z.hitTimer > 0) z.hitTimer -= dt;
-
     // collide with player -> damage
     if (player.invuln <= 0) {
       const feetP = { x: player.x + player.w*0.25, y: player.y + player.h*0.65, w: player.w*0.5, h: player.h*0.3 };
       const zBox = { x: z.x + z.w*0.25, y: z.y + z.h*0.65, w: z.w*0.5, h: z.h*0.3 };
       if (rectsOverlap(feetP, zBox)) {
+        // Damage + light knockback
         player.hearts -= 1;
         player.invuln = 1.0;
-        // knockback
         player.x -= vx * 30; player.y -= vy * 30;
         if (player.hearts <= 0) {
           running = false;
@@ -847,38 +665,20 @@ function updateZombies(dt) {
 function renderZombies() {
   for (const z of zombies) {
     if (!z.alive) continue;
-
-    const frames = zombieFrames[z.variant][z.dir];
-    // Use frame 0 when stopped (not strictly needed here since anim always runs, but keeps idle when we add states)
-    const fIndex = (z.frame>=0 && z.frame<5) ? z.frame : 0;
-    const img = frames[fIndex];
-
+    const img = anaFrames[z.dir][z.frame];
     ctx.save();
-    ctx.imageSmoothingEnabled = false;
-
-    // slight greenish aura/shadow
-    ctx.shadowColor = "rgba(100,160,120,0.35)";
-    ctx.shadowBlur = 8;
-
-    // hit flash: quick pale overlay
-    if (z.hitTimer > 0) {
-      ctx.globalAlpha = 0.75;
-    } else {
-      ctx.globalAlpha = 0.98;
-    }
-
+    ctx.globalAlpha = 0.95;
+    ctx.filter = "grayscale(80%)";
     ctx.drawImage(img, 0,0, BASE_W, BASE_H, Math.round(z.x), Math.round(z.y), DRAW_W, DRAW_H);
     ctx.restore();
   }
 }
 
-/* FIX: coins stay where zombie died */
+/* Coins stay where zombie died */
 function dropCoin(x, y) {
-  // Spawn a static coin exactly at the death position.
   coins.push({x, y, r: 8});
 }
 function updateCoins(dt) {
-  // Static coins: no gravity, no movement — just check pickup.
   for (let i = coins.length - 1; i >= 0; i--) {
     const c = coins[i];
     if (circleHit(c.x, c.y, player.x+DRAW_W/2, player.y+DRAW_H*0.8, 24)) {
@@ -897,28 +697,93 @@ function renderCoins() {
 }
 
 /* =========================
-   Sword hit detection
+   Sword math + VFX (CHANGED)
+   ========================= */
+/* Hand anchor in world space */
+function handAnchor(dir) {
+  // base near right hand
+  let ox = 0, oy = 0;
+  if (dir === 0) { ox = 0; oy = 22; }     // down
+  else if (dir === 1) { ox = -18; oy = 22; } // left
+  else if (dir === 2) { ox = 18; oy = 22; }  // right
+  else { ox = 0; oy = 14; }               // up
+  return {
+    x: player.x + DRAW_W/2 + ox,
+    y: player.y + DRAW_H/2 + oy
+  };
+}
+
+/* Arc angles per direction (radians) */
+function arcAngles(dir) {
+  // wide ~130° arc
+  const span = Math.PI * 0.72;
+  if (dir === 0) return {start: Math.PI*0.15, end: Math.PI*0.85};           // down: left->right
+  if (dir === 1) return {start: Math.PI*1.15, end: Math.PI*1.85};           // left: up->down
+  if (dir === 2) return {start: -Math.PI*0.15, end: Math.PI*0.65};          // right: up->down
+  return {start: -Math.PI*0.85, end: -Math.PI*0.15};                        // up: left->right
+}
+
+/* Compute sword transform at time t (0..1) */
+function swordAt(t, dir) {
+  const eased = easeOutCubic(t);
+  const {start, end} = arcAngles(dir);
+  const angle = lerp(start, end, eased);
+  const base = handAnchor(dir);
+  const radius = 34;
+  const tipX = base.x + Math.cos(angle) * radius;
+  const tipY = base.y + Math.sin(angle) * radius;
+  return {angle, baseX: base.x, baseY: base.y, tipX, tipY};
+}
+
+function pushTrail(x,y,angle) {
+  swordTrail.push({x,y,angle,life:0.12});
+  if (swordTrail.length > 18) swordTrail.shift();
+}
+
+function spawnSlash(x,y,angle) {
+  // a tiny curved slash sprite that fades quickly
+  slashSprites.push({
+    x, y, angle,
+    life: 0.12, maxLife: 0.12
+  });
+}
+
+function updateVFX(dt) {
+  // trail
+  for (let i=swordTrail.length-1; i>=0; i--) {
+    const t = swordTrail[i];
+    t.life -= dt;
+    if (t.life <= 0) swordTrail.splice(i,1);
+  }
+  // slash
+  for (let i=slashSprites.length-1; i>=0; i--) {
+    const s = slashSprites[i];
+    s.life -= dt;
+    if (s.life <= 0) slashSprites.splice(i,1);
+  }
+}
+
+/* =========================
+   Sword hit detection (slightly tuned)
    ========================= */
 function swordActive() {
-  return swingTimer > 0 && (swingTimer / swingDuration) >= 0.15; // activate after a small delay
+  if (swingTimer <= 0) return false;
+  const t = swingTimer / swingDuration;
+  return t >= 0.15 && t <= 0.85; // clearer window
 }
 function hitZombiesWithSword() {
   if (!swordActive()) return;
-  // arc center near player's hand depending on dir
-  let cx = player.x + DRAW_W/2, cy = player.y + DRAW_H*0.75;
-  let nx=0, ny=0; // forward vector
-  if (player.dir===0){ ny=1; } else if (player.dir===1){ nx=-1; } else if (player.dir===2){ nx=1; } else { ny=-1; }
-  cx += nx*30; cy += ny*30;
-  const r = 38; // hit radius
+  const t = clamp(swingTimer / swingDuration, 0, 1);
+  const s = swordAt(t, swingDir);
+  const r = 42; // a little larger to match arc
   for (const z of zombies) {
     if (!z.alive) continue;
     const zx = z.x + DRAW_W/2, zy = z.y + DRAW_H*0.75;
-    if (circleHit(cx, cy, zx, zy, r)) {
+    if (circleHit(s.tipX, s.tipY, zx, zy, r)) {
       z.hp -= 1;
-      z.hitTimer = 0.12; // brief flash
       if (z.hp <= 0) {
         z.alive = false;
-        dropCoin(zx, zy-10); // stays right here now
+        dropCoin(zx, zy-10);
       }
     }
   }
@@ -956,9 +821,18 @@ function update(dt) {
   if ((keys.has(' ') || keys.has('space')) && performance.now()/1000 >= canSwingAt) {
     swingTimer = 0.0001; // start
     canSwingAt = performance.now()/1000 + swingCooldown;
+    swingDir = player.dir; // capture direction at start
+    // spawn a tiny initial slash spark
+    const startS = swordAt(0.05, swingDir);
+    spawnSlash(startS.tipX, startS.tipY, startS.angle);
   }
+
   if (swingTimer > 0) {
     swingTimer += dt;
+    const t = clamp(swingTimer / swingDuration, 0, 1);
+    const s = swordAt(t, swingDir);
+    pushTrail(s.tipX, s.tipY, s.angle);
+    if (t > 0.1 && Math.abs(t-0.4) < 0.016) spawnSlash(s.tipX, s.tipY, s.angle);
     hitZombiesWithSword();
     if (swingTimer >= swingDuration) swingTimer = 0;
   }
@@ -997,15 +871,87 @@ function update(dt) {
   // i-frames
   if (player.invuln > 0) player.invuln -= dt;
 
+  // VFX updates
+  updateVFX(dt);
+
   // HUD
   setHUD();
+}
+
+function renderSwordAndVFX() {
+  // Draw trail
+  for (let i=0; i<swordTrail.length; i++) {
+    const t = swordTrail[i];
+    const a = clamp(t.life / 0.12, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = a * 0.6;
+    ctx.translate(t.x, t.y);
+    ctx.rotate(t.angle);
+    // simple blade line
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, -2, 28, 1);
+    ctx.fillStyle = "#cfd7df";
+    ctx.fillRect(0, -1, 28, 1);
+    ctx.restore();
+  }
+  // Draw active sword (if swinging) or small idle sword
+  if (swingTimer > 0) {
+    const t = clamp(swingTimer / swingDuration, 0, 1);
+    const s = swordAt(t, swingDir);
+    ctx.save();
+    ctx.translate(s.baseX, s.baseY);
+    ctx.rotate(s.angle);
+    // guard/hilt
+    ctx.fillStyle = "#8b6a2b";
+    ctx.fillRect(-2, -2, 4, 2);
+    // blade
+    ctx.fillStyle = "#cfd7df";
+    ctx.fillRect(0, -2, 30, 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, -2, 30, 1);
+    ctx.restore();
+  } else {
+    // tiny idle sword so Ana appears armed
+    const dir = player.dir;
+    const base = handAnchor(dir);
+    let angle = 0;
+    if (dir === 0) angle = 0.25;
+    else if (dir === 1) angle = -1.0;
+    else if (dir === 2) angle = 1.0;
+    else angle = -0.25;
+    ctx.save();
+    ctx.translate(base.x, base.y);
+    ctx.rotate(angle);
+    ctx.fillStyle = "#8b6a2b";
+    ctx.fillRect(-2, -2, 4, 2);
+    ctx.fillStyle = "#cfd7df";
+    ctx.fillRect(0, -2, 18, 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, -2, 18, 1);
+    ctx.restore();
+  }
+
+  // Slash sprites
+  for (const s of slashSprites) {
+    const a = clamp(s.life / s.maxLife, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.translate(s.x, s.y);
+    ctx.rotate(s.angle);
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 20, -0.6, 0.6);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 function render() {
   // draw map
   ctx.drawImage(mapBuffer, 0, 0);
 
-  // draw door
+  // draw door as dynamic overlay
   if (world === "grass" && door.visible) {
     drawDoor(ctx, door.x, door.y, door.w, door.h);
   }
@@ -1029,7 +975,7 @@ function render() {
     renderCoins();
   }
 
-  // draw player
+  // draw player (no sword baked in)
   const img = anaFrames[player.dir][player.frame];
   ctx.save();
   ctx.imageSmoothingEnabled = false;
@@ -1041,25 +987,14 @@ function render() {
 
   ctx.drawImage(img, 0,0, BASE_W, BASE_H, Math.round(player.x), Math.round(player.y), DRAW_W, DRAW_H);
 
-  // swing trail for visual feedback
-  if (swingTimer > 0) {
-    ctx.strokeStyle = "rgba(255,255,255,0.5)";
-    ctx.lineWidth = 2;
-    const cx = player.x + DRAW_W/2;
-    const cy = player.y + DRAW_H*0.75;
-    ctx.beginPath();
-    if (player.dir===0) { ctx.arc(cx, cy, 30, Math.PI*0.1, Math.PI*0.9); }
-    if (player.dir===1) { ctx.arc(cx, cy, 30, Math.PI*1.1, Math.PI*1.9); }
-    if (player.dir===2) { ctx.arc(cx, cy, 30, Math.PI*1.9, Math.PI*0.1, true); }
-    if (player.dir===3) { ctx.arc(cx, cy, 30, -Math.PI*0.9, -Math.PI*0.1); }
-    ctx.stroke();
-  }
-
   // name above player
   ctx.fillStyle = "#fff"; ctx.font = "18px monospace"; ctx.textAlign = "center";
   ctx.fillText("Ana", Math.round(player.x + DRAW_W/2), Math.round(player.y - 10));
 
   ctx.restore();
+
+  // sword + VFX on top
+  renderSwordAndVFX();
 }
 
 function loop(ts) {
@@ -1087,7 +1022,7 @@ document.getElementById("startBtn").addEventListener("click", () => {
    Init
    ========================= */
 resize();
-placeSilvio();
+placeSilvio(); // ensure position before initial map
 player.x = (W - DRAW_W)/2;
 player.y = (H - DRAW_H)/2;
 buildStaticMap();
